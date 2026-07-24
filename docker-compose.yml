@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  # Aiko Backend
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aiko-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - GROK_API_KEY=${GROK_API_KEY:-}
+      - API_KEY=${API_KEY:-aiko-default-key}
+      - DEBUG=${DEBUG:-false}
+      - ANALYSIS_LEVEL=${ANALYSIS_LEVEL:-balanced}
+      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./documents:/app/documents
+      - ./uploads:/app/uploads
+    depends_on:
+      - ollama
+    networks:
+      - aiko-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Ollama (Local LLM)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: aiko-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - aiko-network
+    restart: unless-stopped
+    environment:
+      - OLLAMA_NUM_THREAD=4
+      - OLLAMA_NUM_GPU=0  # Set to 1 if you have GPU support
+
+  # Optional: PostgreSQL for scaling
+  # postgres:
+  #   image: postgres:16
+  #   container_name: aiko-postgres
+  #   environment:
+  #     - POSTGRES_DB=aiko
+  #     - POSTGRES_USER=aiko
+  #     - POSTGRES_PASSWORD=${DB_PASSWORD:-change-me}
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   networks:
+  #     - aiko-network
+  #   restart: unless-stopped
+
+  # Optional: Redis for caching
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: aiko-redis
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis-data:/data
+  #   networks:
+  #     - aiko-network
+  #   restart: unless-stopped
+
+networks:
+  aiko-network:
+    driver: bridge
+
+volumes:
+  ollama-data:
+  postgres-data:
+  redis-data:
