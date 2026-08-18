@@ -17,38 +17,58 @@ class LLMFactory:
     _failed_providers: set[str] = set()
 
     @staticmethod
+    def _prefer_local() -> bool:
+        """
+        True = priorizar Ollama (uso en PC).
+        production / cloud = APIs primero, Ollama al final.
+        """
+        env = str(getattr(settings, "ENVIRONMENT", "local") or "local").lower()
+        prefer = getattr(settings, "PREFER_OLLAMA", None)
+        if prefer is not None:
+            return bool(prefer)
+        # Por defecto en PC: local
+        return env not in ("production", "prod", "cloud", "render")
+
+    @staticmethod
     def create_llm() -> BaseLanguageModel:
         return LLMFactory.create_llm_for_task("normal")
 
     @staticmethod
     def create_llm_for_task(task_type: str = "normal") -> BaseLanguageModel:
         """
-        Cascada automática:
-        1. Groq
-        2. Google
-        3. OpenAI
-        4. Anthropic
-        5. Grok
-        6. Ollama (local)
+        Cascada:
+
+        LOCAL (PC):
+          1. Ollama (qwen2.5:7b)
+          2. Groq / Google / OpenAI / Anthropic / Grok (si hay keys)
+
+        PRODUCTION (más adelante en Render):
+          1. APIs
+          2. Ollama (solo si existiera en ese entorno)
         """
-        providers = []
+        api_providers = []
 
         if getattr(settings, "GROQ_API_KEY", None):
-            providers.append(("Groq", LLMFactory._create_groq))
+            api_providers.append(("Groq", LLMFactory._create_groq))
 
         if getattr(settings, "GOOGLE_API_KEY", None):
-            providers.append(("Google", LLMFactory._create_google))
+            api_providers.append(("Google", LLMFactory._create_google))
 
         if getattr(settings, "OPENAI_API_KEY", None):
-            providers.append(("OpenAI", LLMFactory._create_openai))
+            api_providers.append(("OpenAI", LLMFactory._create_openai))
 
         if getattr(settings, "ANTHROPIC_API_KEY", None):
-            providers.append(("Anthropic", LLMFactory._create_anthropic))
+            api_providers.append(("Anthropic", LLMFactory._create_anthropic))
 
         if getattr(settings, "GROK_API_KEY", None):
-            providers.append(("Grok", LLMFactory._create_grok))
+            api_providers.append(("Grok", LLMFactory._create_grok))
 
-        providers.append(("Ollama", LLMFactory._create_ollama))
+        if LLMFactory._prefer_local():
+            providers = [("Ollama", LLMFactory._create_ollama)] + api_providers
+            logger.info("Modo LOCAL: Ollama tiene prioridad")
+        else:
+            providers = api_providers + [("Ollama", LLMFactory._create_ollama)]
+            logger.info("Modo PRODUCTION: APIs tienen prioridad")
 
         last_error = None
         for name, creator in providers:
@@ -103,7 +123,6 @@ class LLMFactory:
     @staticmethod
     def _create_google() -> BaseLanguageModel:
         from langchain_google_genai import ChatGoogleGenerativeAI
-        # IMPORTANTE: gemini-2.0-flash ya no existe
         return ChatGoogleGenerativeAI(
             api_key=settings.GOOGLE_API_KEY,
             model="gemini-2.5-flash",
@@ -113,10 +132,10 @@ class LLMFactory:
     @staticmethod
     def _create_groq() -> BaseLanguageModel:
         from langchain_openai import ChatOpenAI
-        # Modelo más liviano = menos consumo de cuota diaria
+        # Modelo actualizado (llama-3.1-8b-instant ya no estaba disponible)
         return ChatOpenAI(
             api_key=settings.GROQ_API_KEY,
-            model="llama-3.1-8b-instant",
+            model=getattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile"),
             base_url="https://api.groq.com/openai/v1",
             temperature=0.5,
             max_tokens=8192,
@@ -135,23 +154,25 @@ class LLMFactory:
 
     @staticmethod
     def _create_ollama() -> BaseLanguageModel:
+        model = getattr(settings, "OLLAMA_MODEL", "qwen2.5:7b")
+        base_url = getattr(settings, "OLLAMA_BASE_URL", "http://localhost:11434")
+        timeout = getattr(settings, "OLLAMA_TIMEOUT", 120)
+
         try:
             from langchain_ollama import ChatOllama
             return ChatOllama(
-                base_url=getattr(settings, "OLLAMA_BASE_URL", "http://localhost:11434"),
-                model=getattr(settings, "OLLAMA_MODEL", "qwen2.5:7b"),
+                base_url=base_url,
+                model=model,
                 temperature=0.5,
                 num_ctx=8192,
-                timeout=getattr(settings, "OLLAMA_TIMEOUT", 120),
+                timeout=timeout,
             )
         except ImportError:
-            from langchain_community.llms import Ollama
-            return Ollama(
-                base_url=getattr(settings, "OLLAMA_BASE_URL", "http://localhost:11434"),
-                model=getattr(settings, "OLLAMA_MODEL", "qwen2.5:7b"),
+            from langchain_community.chat_models import ChatOllama
+            return ChatOllama(
+                base_url=base_url,
+                model=model,
                 temperature=0.5,
-                num_ctx=8192,
-                timeout=getattr(settings, "OLLAMA_TIMEOUT", 120),
             )
 
     @staticmethod
@@ -167,7 +188,8 @@ class LLMFactory:
                 return (
                     "Hola, soy Aiko en modo de emergencia. "
                     "Ningún modelo de IA está disponible ahora mismo. "
-                    "Revisa tus API keys o que Ollama esté corriendo (`ollama serve`)."
+                    "Revisa que Ollama esté corriendo (`ollama serve`) "
+                    "y que tengas el modelo qwen2.5:7b."
                 )
 
         return DummyLLM()
