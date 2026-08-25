@@ -1,7 +1,7 @@
 """Factory for creating LLM instances based on configuration."""
 
 import logging
-from typing import Any
+from typing import Any, List, Optional
 
 from langchain_core.language_models import BaseLanguageModel
 
@@ -26,7 +26,6 @@ class LLMFactory:
         prefer = getattr(settings, "PREFER_OLLAMA", None)
         if prefer is not None:
             return bool(prefer)
-        # Por defecto en PC: local
         return env not in ("production", "prod", "cloud", "render")
 
     @staticmethod
@@ -35,17 +34,6 @@ class LLMFactory:
 
     @staticmethod
     def create_llm_for_task(task_type: str = "normal") -> BaseLanguageModel:
-        """
-        Cascada:
-
-        LOCAL (PC):
-          1. Ollama (qwen2.5:7b)
-          2. Groq / Google / OpenAI / Anthropic / Grok (si hay keys)
-
-        PRODUCTION (más adelante en Render):
-          1. APIs
-          2. Ollama (solo si existiera en ese entorno)
-        """
         api_providers = []
 
         if getattr(settings, "GROQ_API_KEY", None):
@@ -122,12 +110,100 @@ class LLMFactory:
 
     @staticmethod
     def _create_google() -> BaseLanguageModel:
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        return ChatGoogleGenerativeAI(
-            google_api_key=settings.GOOGLE_API_KEY,
-            model="gemini-1.5-flash",
+        """
+        SDK nuevo de Google (google-genai).
+        Compatible con keys AQ... y modelos Gemini 2.x / 3.x.
+        """
+        from langchain_core.language_models.chat_models import BaseChatModel
+        from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+        from langchain_core.outputs import ChatGeneration, ChatResult
+        from langchain_core.callbacks import CallbackManagerForLLMRun
+        from pydantic import Field
+
+        class GeminiChat(BaseChatModel):
+            model_name: str = Field(default="gemini-2.0-flash")
+            api_key: str = Field(default="")
+            temperature: float = Field(default=0.5)
+
+            @property
+            def _llm_type(self) -> str:
+                return "gemini-google-genai"
+
+            def _generate(
+                self,
+                messages: List[BaseMessage],
+                stop: Optional[List[str]] = None,
+                run_manager: Optional[CallbackManagerForLLMRun] = None,
+                **kwargs: Any,
+            ) -> ChatResult:
+                from google import genai
+
+                client = genai.Client(api_key=self.api_key)
+
+                parts = []
+                for m in messages:
+                    if isinstance(m, SystemMessage):
+                        role = "system"
+                    elif isinstance(m, AIMessage):
+                        role = "model"
+                    else:
+                        role = "user"
+                    content = m.content if isinstance(m.content, str) else str(m.content)
+                    parts.append(f"{role}: {content}")
+
+                prompt = "\n".join(parts)
+
+                model_candidates = [
+                    self.model_name,
+                    "gemini-2.0-flash",
+                    "gemini-2.0-flash-001",
+                    "gemini-1.5-flash",
+                    "gemini-1.5-pro",
+                ]
+
+                last_err = None
+                text = ""
+                for model_id in model_candidates:
+                    try:
+                        response = client.models.generate_content(
+                            model=model_id,
+                            contents=prompt,
+                        )
+                        text = getattr(response, "text", None) or str(response)
+                        if text:
+                            break
+                    except Exception as e:
+                        last_err = e
+                        logger.warning(f"Gemini modelo {model_id} falló: {e}")
+                        continue
+
+                if not text:
+                    raise RuntimeError(f"Gemini no disponible: {last_err}")
+
+                return ChatResult(
+                    generations=[ChatGeneration(message=AIMessage(content=text))]
+                )
+
+            async def _agenerate(
+                self,
+                messages: List[BaseMessage],
+                stop: Optional[List[str]] = None,
+                run_manager: Optional[Any] = None,
+                **kwargs: Any,
+            ) -> ChatResult:
+                import asyncio
+                return await asyncio.to_thread(
+                    self._generate, messages, stop, run_manager, **kwargs
+                )
+
+        api_key = settings.GOOGLE_API_KEY
+        if not api_key:
+            raise ValueError("GOOGLE_API_KEY no configurada")
+
+        return GeminiChat(
+            api_key=api_key,
+            model_name="gemini-2.0-flash",
             temperature=0.5,
-            max_tokens=1024,
         )
 
     @staticmethod
@@ -135,7 +211,7 @@ class LLMFactory:
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(
             api_key=settings.GROQ_API_KEY,
-            model=getattr(settings, "GROQ_MODEL", "llama-3.1-8b-instant"),
+            model=getattr(settings, "GROQ_MODEL", "openai/gpt-oss-20b"),
             base_url="https://api.groq.com/openai/v1",
             temperature=0.5,
             max_tokens=1024,
