@@ -107,7 +107,7 @@ class LLMFactory:
             api_key=settings.OPENAI_API_KEY,
             model="gpt-4o-mini",
             temperature=0.5,
-            max_tokens=8192,
+            max_tokens=1024,
         )
 
     @staticmethod
@@ -117,7 +117,7 @@ class LLMFactory:
             api_key=settings.ANTHROPIC_API_KEY,
             model="claude-3-5-sonnet-20241022",
             temperature=0.5,
-            max_tokens=8192,
+            max_tokens=1024,
         )
 
     @staticmethod
@@ -127,6 +127,7 @@ class LLMFactory:
             google_api_key=settings.GOOGLE_API_KEY,
             model="gemini-1.5-flash",
             temperature=0.5,
+            max_tokens=1024,
         )
 
     @staticmethod
@@ -137,7 +138,7 @@ class LLMFactory:
             model=getattr(settings, "GROQ_MODEL", "llama-3.1-8b-instant"),
             base_url="https://api.groq.com/openai/v1",
             temperature=0.5,
-            max_tokens=8192,
+            max_tokens=1024,
         )
 
     @staticmethod
@@ -148,7 +149,7 @@ class LLMFactory:
             model="grok-3",
             base_url="https://api.x.ai/v1",
             temperature=0.5,
-            max_tokens=8192,
+            max_tokens=1024,
         )
 
     @staticmethod
