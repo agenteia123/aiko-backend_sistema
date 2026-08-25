@@ -42,6 +42,20 @@ FILE_TOOL_NAMES = {
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
 
 
+def _safe_delete(*paths: str) -> None:
+    """Borra archivos temporales del disco de Render."""
+    for p in paths:
+        if not p:
+            continue
+        try:
+            path = Path(p)
+            if path.exists() and path.is_file():
+                path.unlink()
+                logger.info(f"🗑️ Temporal borrado: {path}")
+        except Exception as e:
+            logger.warning(f"No se pudo borrar temporal {p}: {e}")
+
+
 def _normalize_content(content) -> str:
     if content is None:
         return ""
@@ -239,7 +253,6 @@ class AikoAgent:
         active = getattr(self, "_active_tools", self.tools)
         for attempt in range(max_attempts):
             try:
-                # Gemini (wrapper custom) no soporta bind_tools
                 llm_type = getattr(self.llm, "_llm_type", "")
                 if active and llm_type != "gemini-google-genai":
                     llm_with_tools = self.llm.bind_tools(active)
@@ -606,7 +619,9 @@ class AikoAgent:
                     "complex" if use_complex else "normal"
                 )
                 if use_complex:
-                    logger.info("Usando modelo complejo (Gemini prioritario) para esta pregunta")
+                    logger.info(
+                        "Usando modelo complejo (Gemini prioritario) para esta pregunta"
+                    )
             except Exception as e:
                 logger.warning(f"No se pudo elegir modelo: {e}")
                 self.llm = LLMFactory.create_llm()
@@ -846,7 +861,6 @@ Usuario: {user_message}"""
             response_message = result_graph["messages"][-1]
             clean_response = _normalize_content(response_message.content)
 
-            # Memoria local
             try:
                 await self.memory.save_message(
                     user_id, conversation_id, "user", user_message
@@ -857,7 +871,6 @@ Usuario: {user_message}"""
             except Exception as e:
                 logger.warning(f"No se pudieron guardar mensajes locales: {e}")
 
-            # Mirror en Supabase
             try:
                 from core.supabase_client import save_message as sb_save_message
 
@@ -979,8 +992,7 @@ Usuario: {user_message}"""
                     )
                     logger.info(f"✅ AUTO-WRITE PDF: {full_path}")
 
-                    # Subir a Supabase Storage
-                    download_note = f"\n\n✅ PDF creado en servidor:\n{full_path}"
+                    download_note = "\n\n✅ PDF creado (temporal en servidor)."
                     try:
                         from core.supabase_client import upload_document
 
@@ -997,6 +1009,12 @@ Usuario: {user_message}"""
                                 f"\n\n✅ PDF listo. Descárgalo aquí:\n{up['public_url']}"
                             )
                             result["metadata"]["document_url"] = up["public_url"]
+                            # Limpiar Render: PDF + imágenes usadas
+                            _safe_delete(full_path, *list(self._turn_images))
+                        else:
+                            download_note = (
+                                f"\n\n⚠️ PDF creado pero no se pudo subir a Supabase:\n{full_path}"
+                            )
                     except Exception as e:
                         logger.error(f"Error subiendo PDF a Supabase: {e}")
 
@@ -1007,7 +1025,7 @@ Usuario: {user_message}"""
                 except Exception as e:
                     logger.error(f"Error en auto-write PDF: {e}")
 
-            # AUTO-WRITE TXT
+            # AUTO-WRITE TXT (texto liviano; se puede dejar local o también subir)
             wants_txt = explicit and any(
                 word in lower_msg
                 for word in ["crea un archivo", "crear un archivo", ".txt"]
@@ -1042,9 +1060,30 @@ Usuario: {user_message}"""
                         encoding="utf-8",
                     )
                     logger.info(f"✅ AUTO-WRITE TXT: {full_path}")
+
+                    download_note = f"\n\n✅ Archivo guardado en:\n{full_path}"
+                    try:
+                        from core.supabase_client import upload_document
+
+                        up = upload_document(
+                            local_path=full_path,
+                            filename=path_obj.name,
+                            file_type="txt",
+                            external_user_id=user_id,
+                            conversation_id=conversation_id,
+                            title="Documento generado por Aiko",
+                        )
+                        if up and up.get("public_url"):
+                            download_note = (
+                                f"\n\n✅ Archivo listo. Descárgalo aquí:\n{up['public_url']}"
+                            )
+                            result["metadata"]["document_url"] = up["public_url"]
+                            _safe_delete(full_path)
+                    except Exception as e:
+                        logger.error(f"Error subiendo TXT a Supabase: {e}")
+
                     result["response"] = (
-                        str(result.get("response", "")).strip()
-                        + f"\n\n✅ Archivo guardado en:\n{full_path}"
+                        str(result.get("response", "")).strip() + download_note
                     ).strip()
                     result["metadata"]["auto_write"] = True
                 except Exception as e:
@@ -1107,6 +1146,7 @@ Usuario: {user_message}"""
                                 f"\n\n✅ Word listo. Descárgalo aquí:\n{up['public_url']}"
                             )
                             result["metadata"]["document_url"] = up["public_url"]
+                            _safe_delete(full_path, *list(self._turn_images))
                     except Exception as e:
                         logger.error(f"Error subiendo Word a Supabase: {e}")
 
@@ -1120,7 +1160,7 @@ Usuario: {user_message}"""
             return result
 
         except Exception as e:
-            logger.error(f"Error processing message: {e}", exp_info=True)
+            logger.error(f"Error processing message: {e}", exc_info=True)
             return {
                 "success": False,
                 "error": str(e),
