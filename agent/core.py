@@ -287,32 +287,27 @@ class AikoAgent:
                     ]
                 )
                 if is_api_error:
-                    if any(x in error_str for x in ["groq", "llama-3", "llama3"]):
+                    # Solo marcar el proveedor real del error (evitar marcar Google por error de Groq)
+                    if any(x in error_str for x in ["groq", "llama-3", "llama3", "gpt-oss"]):
                         LLMFactory.mark_failed("Groq")
-                    if any(
+                    elif any(
                         x in error_str
-                        for x in ["openai", "insufficient_quota", "gpt-"]
-                    ):
+                        for x in ["openai", "insufficient_quota", "gpt-4", "gpt-3"]
+                    ) and "gpt-oss" not in error_str:
                         LLMFactory.mark_failed("OpenAI")
-                    if any(
+                    elif any(
                         x in error_str
-                        for x in [
-                            "google",
-                            "gemini",
-                            "not_found",
-                            "no longer available",
-                            "resource_exhausted",
-                        ]
+                        for x in ["google", "gemini", "generativelanguage"]
                     ):
                         LLMFactory.mark_failed("Google")
-                    if any(
+                    elif any(
                         x in error_str
                         for x in ["anthropic", "claude", "credit balance"]
                     ):
                         LLMFactory.mark_failed("Anthropic")
-                    if any(x in error_str for x in ["grok", "x.ai", "xai"]):
+                    elif any(x in error_str for x in ["grok", "x.ai", "xai"]):
                         LLMFactory.mark_failed("Grok")
-                    if any(x in error_str for x in ["ollama", "11434"]):
+                    elif any(x in error_str for x in ["ollama", "11434"]):
                         LLMFactory.mark_failed("Ollama")
                     try:
                         self.llm = LLMFactory.create_llm_for_task("complex")
@@ -800,7 +795,16 @@ REGLA OBLIGATORIA:
 - NUNCA inventes rutas como C:/Users/.../diet.jpg si no están en la lista.
 """
 
-            system_prompt = f"""Eres Aiko, una compañera AI con personalidad propia.
+            # Prompt corto para saludos / mensajes simples (evita límite 8000 tokens de Groq free)
+            if is_simple_greeting(user_message) or len(user_message.strip()) < 40:
+                system_prompt = f"""Eres Aiko, una compañera AI amable, cercana y un poco juguetona.
+Hoy es {current_date}.
+Responde en español, de forma breve, natural y cálida.
+No uses herramientas. No inventes información.
+
+Usuario: {user_message}"""
+            else:
+                system_prompt = f"""Eres Aiko, una compañera AI con personalidad propia.
 Hoy es {current_date}.
 
 FECHA REAL DEL SISTEMA (OBLIGATORIO):
