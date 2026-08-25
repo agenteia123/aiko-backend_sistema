@@ -2,14 +2,13 @@
 
 import logging
 import re
-from typing import Annotated
+from typing import Annotated, TypedDict
 from datetime import datetime
 from pathlib import Path
 
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
-from pydantic import BaseModel, Field
 
 from config.settings import settings
 from core.llm_factory import LLMFactory
@@ -87,13 +86,11 @@ def _extract_image_paths(attachments: list | None) -> list[str]:
             continue
         p = str(p).strip().strip('"').strip("'")
 
-        # URL relativa del front → carpeta local de uploads
         if p.startswith("/uploads/") or p.startswith("uploads/"):
             p = str((Path("data") / "uploads" / Path(p).name).resolve())
         elif p.startswith("/api/uploads/"):
             p = str((Path("data") / "uploads" / Path(p).name).resolve())
         elif p.startswith("http://") or p.startswith("https://"):
-            # solo nombre si viene en query/path
             name = Path(p.split("?")[0]).name
             candidate = Path("data") / "uploads" / name
             if candidate.exists():
@@ -102,7 +99,6 @@ def _extract_image_paths(attachments: list | None) -> list[str]:
                 continue
 
         path_obj = Path(p)
-        # Si solo mandan el nombre del archivo
         if not path_obj.is_absolute() and not path_obj.exists():
             for base in [
                 Path("data") / "uploads",
@@ -120,7 +116,6 @@ def _extract_image_paths(attachments: list | None) -> list[str]:
             paths.append(str(path_obj.resolve()))
         else:
             logger.warning(f"Attachment imagen no existe en disco: {path_obj}")
-    # únicos, máx 8
     seen = set()
     out = []
     for x in paths:
@@ -130,12 +125,12 @@ def _extract_image_paths(attachments: list | None) -> list[str]:
     return out[:8]
 
 
-class AgentState(BaseModel):
+class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
-    user_id: str = ""
-    conversation_id: str = ""
-    analysis_level: str = "balanced"
-    metadata: dict = Field(default_factory=dict)
+    user_id: str
+    conversation_id: str
+    analysis_level: str
+    metadata: dict
 
 
 class AikoAgent:
@@ -247,9 +242,9 @@ class AikoAgent:
             try:
                 if active:
                     llm_with_tools = self.llm.bind_tools(active)
-                    response = await llm_with_tools.ainvoke(state.messages)
+                    response = await llm_with_tools.ainvoke(state["messages"])
                 else:
-                    response = await self.llm.ainvoke(state.messages)
+                    response = await self.llm.ainvoke(state["messages"])
                 return {"messages": [response]}
             except Exception as e:
                 error_str = str(e).lower()
@@ -346,7 +341,7 @@ class AikoAgent:
         }
 
     async def _tools_node(self, state: AgentState) -> dict:
-        messages = state.messages
+        messages = state["messages"]
         last_message = messages[-1]
         if not hasattr(last_message, "tool_calls") or not last_message.tool_calls:
             return {"messages": []}
@@ -374,7 +369,6 @@ class AikoAgent:
                     else getattr(tool_call, "id", "")
                 )
 
-                # Bloqueo: no crear archivos si la tool no está activa
                 if tool_name in FILE_TOOL_NAMES and tool_name not in active_map:
                     logger.warning(
                         f"⛔ Tool bloqueada por intent (no activa): {tool_name}"
@@ -390,7 +384,6 @@ class AikoAgent:
                     )
                     continue
 
-                # Inyectar imágenes reales del turno si el modelo no las pasó
                 if tool_name in (
                     "create_pdf",
                     "create_word",
@@ -398,7 +391,6 @@ class AikoAgent:
                     "create_powerpoint",
                 ):
                     existing = tool_args.get("images") or []
-                    # filtrar inventadas que no existen
                     valid_existing = []
                     for ip in existing:
                         try:
@@ -407,7 +399,6 @@ class AikoAgent:
                         except Exception:
                             pass
                     if self._turn_images:
-                        # preferir siempre las del upload real
                         tool_args["images"] = list(self._turn_images)
                         logger.info(
                             f"🖼️ images inyectadas en {tool_name}: {tool_args['images']}"
@@ -436,7 +427,7 @@ class AikoAgent:
         return {"messages": results}
 
     def _should_continue(self, state: AgentState) -> str:
-        last_message = state.messages[-1]
+        last_message = state["messages"][-1]
         if hasattr(last_message, "tool_calls") and last_message.tool_calls:
             return "continue"
         return "end"
@@ -581,7 +572,6 @@ class AikoAgent:
             intent_hint = intent_tool_hint(intent)
             logger.info(f"🎯 Intent detectado: {intent}")
 
-            # Imágenes del turno (rutas reales)
             self._turn_images = _extract_image_paths(attachments)
             if self._turn_images:
                 logger.info(f"🖼️ Imágenes adjuntas válidas: {self._turn_images}")
@@ -843,13 +833,13 @@ REGLAS:
 
 Usuario: {user_message}"""
 
-            initial_state = AgentState(
-                messages=[HumanMessage(content=system_prompt)],
-                user_id=user_id,
-                conversation_id=conversation_id,
-                analysis_level=analysis_level,
-                metadata={"intent": intent, "images": list(self._turn_images)},
-            )
+            initial_state: AgentState = {
+                "messages": [HumanMessage(content=system_prompt)],
+                "user_id": user_id,
+                "conversation_id": conversation_id,
+                "analysis_level": analysis_level,
+                "metadata": {"intent": intent, "images": list(self._turn_images)},
+            }
 
             result_graph = await self.graph.ainvoke(initial_state)
             response_message = result_graph["messages"][-1]
