@@ -287,7 +287,6 @@ class AikoAgent:
                     ]
                 )
                 if is_api_error:
-                    # Solo marcar el proveedor real del error (evitar marcar Google por error de Groq)
                     if any(x in error_str for x in ["groq", "llama-3", "llama3", "gpt-oss"]):
                         LLMFactory.mark_failed("Groq")
                     elif any(
@@ -576,6 +575,12 @@ class AikoAgent:
                 )
 
             self._active_tools = self._tools_for_intent(intent)
+
+            # En saludos / mensajes cortos NO enviamos tools (ahorra miles de tokens)
+            if is_simple_greeting(user_message) or len(user_message.strip()) < 40:
+                self._active_tools = []
+                logger.info("🔒 Tools desactivadas (saludo / mensaje corto)")
+
             self.tool_map = {
                 getattr(t, "name", str(i)): t
                 for i, t in enumerate(self._active_tools)
@@ -795,7 +800,7 @@ REGLA OBLIGATORIA:
 - NUNCA inventes rutas como C:/Users/.../diet.jpg si no están en la lista.
 """
 
-            # Prompt corto para saludos / mensajes simples (evita límite 8000 tokens de Groq free)
+            # Prompt corto para saludos / mensajes simples
             if is_simple_greeting(user_message) or len(user_message.strip()) < 40:
                 system_prompt = f"""Eres Aiko, una compañera AI amable, cercana y un poco juguetona.
 Hoy es {current_date}.
