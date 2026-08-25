@@ -32,8 +32,8 @@ markdown==3.5.1
 
 # Utilidades
 python-dotenv==1.0.0
-pydantic==2.5.0
-pydantic-settings==2.1.0
+pydantic==2.7.4
+pydantic-settings==2.3.4
 aiofiles==23.2.1
 httpx==0.25.2
 requests==2.31.0
