@@ -34,13 +34,26 @@ class LLMFactory:
 
     @staticmethod
     def create_llm_for_task(task_type: str = "normal") -> BaseLanguageModel:
+        """
+        Cascada inteligente:
+
+        - normal  → Groq primero, luego Gemini
+        - complex → Gemini primero (más tokens), luego Groq
+        """
         api_providers = []
 
-        if getattr(settings, "GROQ_API_KEY", None):
-            api_providers.append(("Groq", LLMFactory._create_groq))
-
-        if getattr(settings, "GOOGLE_API_KEY", None):
-            api_providers.append(("Google", LLMFactory._create_google))
+        if task_type == "complex":
+            # Respuestas largas / documentos → Gemini primero
+            if getattr(settings, "GOOGLE_API_KEY", None):
+                api_providers.append(("Google", LLMFactory._create_google))
+            if getattr(settings, "GROQ_API_KEY", None):
+                api_providers.append(("Groq", LLMFactory._create_groq))
+        else:
+            # Chat normal → Groq primero
+            if getattr(settings, "GROQ_API_KEY", None):
+                api_providers.append(("Groq", LLMFactory._create_groq))
+            if getattr(settings, "GOOGLE_API_KEY", None):
+                api_providers.append(("Google", LLMFactory._create_google))
 
         if getattr(settings, "OPENAI_API_KEY", None):
             api_providers.append(("OpenAI", LLMFactory._create_openai))
@@ -56,7 +69,10 @@ class LLMFactory:
             logger.info("Modo LOCAL: Ollama tiene prioridad")
         else:
             providers = api_providers + [("Ollama", LLMFactory._create_ollama)]
-            logger.info("Modo PRODUCTION: APIs tienen prioridad")
+            logger.info(
+                f"Modo PRODUCTION: APIs tienen prioridad "
+                f"(task={task_type}, orden={[n for n, _ in api_providers]})"
+            )
 
         last_error = None
         for name, creator in providers:
@@ -95,7 +111,7 @@ class LLMFactory:
             api_key=settings.OPENAI_API_KEY,
             model="gpt-4o-mini",
             temperature=0.5,
-            max_tokens=1024,
+            max_tokens=2048,
         )
 
     @staticmethod
@@ -105,14 +121,14 @@ class LLMFactory:
             api_key=settings.ANTHROPIC_API_KEY,
             model="claude-3-5-sonnet-20241022",
             temperature=0.5,
-            max_tokens=1024,
+            max_tokens=2048,
         )
 
     @staticmethod
     def _create_google() -> BaseLanguageModel:
         """
         SDK nuevo de Google (google-genai).
-        Compatible con keys AQ... y modelos Gemini 2.x / 3.x.
+        Compatible con keys AQ... y modelos Gemini 2.x.
         """
         from langchain_core.language_models.chat_models import BaseChatModel
         from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -214,7 +230,7 @@ class LLMFactory:
             model=getattr(settings, "GROQ_MODEL", "openai/gpt-oss-20b"),
             base_url="https://api.groq.com/openai/v1",
             temperature=0.5,
-            max_tokens=1024,
+            max_tokens=2048,
         )
 
     @staticmethod
@@ -225,7 +241,7 @@ class LLMFactory:
             model="grok-3",
             base_url="https://api.x.ai/v1",
             temperature=0.5,
-            max_tokens=1024,
+            max_tokens=2048,
         )
 
     @staticmethod

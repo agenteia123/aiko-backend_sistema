@@ -608,12 +608,15 @@ class AikoAgent:
             needs_search = needs_search_for_message(user_message, intent)
             is_complex = is_complex_message(user_message, intent)
 
+            # Respuestas largas o creación de documentos → Gemini prioritario
+            use_complex = is_complex or intent.startswith("file_") or intent == "folder"
+
             try:
                 self.llm = LLMFactory.create_llm_for_task(
-                    "complex" if is_complex else "normal"
+                    "complex" if use_complex else "normal"
                 )
-                if is_complex:
-                    logger.info("Usando modelo complejo para esta pregunta")
+                if use_complex:
+                    logger.info("Usando modelo complejo (Gemini prioritario) para esta pregunta")
             except Exception as e:
                 logger.warning(f"No se pudo elegir modelo: {e}")
                 self.llm = LLMFactory.create_llm()
