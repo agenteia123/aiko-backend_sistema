@@ -954,43 +954,60 @@ Usuario: {user_message}"""
                 and not self._tool_already_used(result, "create_pdf")
             ):
                 try:
-                    full_path = f"{target_folder}/informe_aiko.pdf"
+                    target_dir = Path("data") / "documents"
+                    target_dir.mkdir(parents=True, exist_ok=True)
+
+                    filename = "informe_aiko.pdf"
                     if "dieta" in lower_msg:
-                        full_path = f"{target_folder}/dieta_saludable.pdf"
-                    path_obj = Path(full_path)
+                        filename = "dieta_saludable.pdf"
+
+                    path_obj = (target_dir / filename).resolve()
+                    full_path = str(path_obj)
+
                     from tools.document_creator import DocumentCreatorTool
 
                     creator = DocumentCreatorTool(
                         allowed_paths=getattr(
                             settings,
                             "ALLOWED_PATHS",
-                            ["./documents", "./uploads", "./data/documents"],
+                            ["./documents", "./uploads", "./data/documents", str(target_dir)],
                         )
                     )
-                    body = (
-                        search_context
-                        if search_context and len(search_context) > 80
-                        else (
-                            clean_response
-                            if clean_response and len(clean_response) > 80
-                            else (
-                                "Guía generada por Aiko.\n\n"
-                                "1. Introducción\n"
-                                "2. Principios\n"
-                                "3. Pasos prácticos\n"
-                                "4. Errores comunes\n"
-                                "5. Conclusión\n"
-                            )
+
+                    # Contenido: preferir respuesta útil del modelo
+                    body = ""
+                    if clean_response and len(clean_response.strip()) > 80:
+                        # Evitar basura tipo "candidates=[...]"
+                        if "candidates=" not in clean_response and "FinishReason" not in clean_response:
+                            body = clean_response.strip()
+                    if not body and search_context and len(search_context) > 80:
+                        body = search_context.strip()
+                    if not body:
+                        body = (
+                            "Guía generada por Aiko.\n\n"
+                            "1. Introducción\n"
+                            "2. Principios básicos\n"
+                            "3. Pasos prácticos\n"
+                            "4. Errores comunes\n"
+                            "5. Conclusión y recomendaciones\n"
                         )
-                    )
-                    path_obj.parent.mkdir(parents=True, exist_ok=True)
+
                     creator.create_pdf(
                         path=full_path,
                         title="Guía generada por Aiko",
-                        content=body.strip(),
+                        content=body,
                         images=list(self._turn_images),
                     )
-                    logger.info(f"✅ AUTO-WRITE PDF: {full_path}")
+
+                    # Verificar que el archivo realmente exista en disco
+                    if not path_obj.exists() or path_obj.stat().st_size < 100:
+                        raise FileNotFoundError(
+                            f"PDF no se generó correctamente en disco: {full_path}"
+                        )
+
+                    logger.info(
+                        f"✅ AUTO-WRITE PDF: {full_path} ({path_obj.stat().st_size} bytes)"
+                    )
 
                     download_note = "\n\n✅ PDF creado (temporal en servidor)."
                     try:
@@ -1017,13 +1034,20 @@ Usuario: {user_message}"""
                             )
                     except Exception as e:
                         logger.error(f"Error subiendo PDF a Supabase: {e}")
+                        download_note = (
+                            f"\n\n⚠️ PDF creado pero error al subir a Supabase:\n{e}"
+                        )
 
                     result["response"] = (
                         str(result.get("response", "")).strip() + download_note
                     ).strip()
                     result["metadata"]["auto_write_pdf"] = True
                 except Exception as e:
-                    logger.error(f"Error en auto-write PDF: {e}")
+                    logger.error(f"Error en auto-write PDF: {e}", exc_info=True)
+                    result["response"] = (
+                        str(result.get("response", "")).strip()
+                        + f"\n\n⚠️ No se pudo generar el PDF: {e}"
+                    ).strip()
 
             # AUTO-WRITE TXT (texto liviano; se puede dejar local o también subir)
             wants_txt = explicit and any(
