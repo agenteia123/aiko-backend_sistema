@@ -38,5 +38,5 @@ aiofiles==23.2.1
 httpx==0.25.2
 requests==2.31.0
 qrcode==7.4.2
-Pillow==10.1.0
+Pillow==10.4.0
 opencv-python-headless==4.8.1.78
