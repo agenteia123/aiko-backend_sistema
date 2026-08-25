@@ -124,18 +124,17 @@ class LLMFactory:
     def _create_google() -> BaseLanguageModel:
         from langchain_google_genai import ChatGoogleGenerativeAI
         return ChatGoogleGenerativeAI(
-            api_key=settings.GOOGLE_API_KEY,
-            model="gemini-2.5-flash",
+            google_api_key=settings.GOOGLE_API_KEY,
+            model="gemini-1.5-flash",
             temperature=0.5,
         )
 
     @staticmethod
     def _create_groq() -> BaseLanguageModel:
         from langchain_openai import ChatOpenAI
-        # Modelo actualizado (llama-3.1-8b-instant ya no estaba disponible)
         return ChatOpenAI(
             api_key=settings.GROQ_API_KEY,
-            model=getattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile"),
+            model=getattr(settings, "GROQ_MODEL", "llama-3.1-8b-instant"),
             base_url="https://api.groq.com/openai/v1",
             temperature=0.5,
             max_tokens=8192,
