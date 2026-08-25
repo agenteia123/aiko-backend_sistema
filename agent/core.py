@@ -240,7 +240,9 @@ class AikoAgent:
         active = getattr(self, "_active_tools", self.tools)
         for attempt in range(max_attempts):
             try:
-                if active:
+                # Gemini (wrapper custom) no soporta bind_tools
+                llm_type = getattr(self.llm, "_llm_type", "")
+                if active and llm_type != "gemini-google-genai":
                     llm_with_tools = self.llm.bind_tools(active)
                     response = await llm_with_tools.ainvoke(state["messages"])
                 else:
@@ -465,15 +467,8 @@ class AikoAgent:
         )
 
     def _resolve_target_folder(self, lower_msg: str) -> str:
-        if "aiko_personal" in lower_msg:
-            return "C:/Users/User/Downloads/aiko_personal"
-        if "ia_personal" in lower_msg:
-            return "C:/Users/User/Downloads/ia_personal"
-        if "documentos" in lower_msg:
-            return "C:/Users/User/OneDrive/Documentos/ia_personal"
-        if "descarga" in lower_msg or "download" in lower_msg:
-            return "C:/Users/User/Downloads/aiko_personal"
-        return "C:/Users/User/Downloads/aiko_personal"
+        # En Render (Linux) usamos carpeta local del proyecto
+        return str(Path("data") / "documents")
 
     def _clean_search_query(self, user_message: str, lower_msg: str) -> str:
         trash = [
@@ -576,7 +571,7 @@ class AikoAgent:
 
             self._active_tools = self._tools_for_intent(intent)
 
-            # En saludos / mensajes cortos NO enviamos tools (ahorra miles de tokens)
+            # En saludos / mensajes cortos NO enviamos tools
             if is_simple_greeting(user_message) or len(user_message.strip()) < 40:
                 self._active_tools = []
                 logger.info("🔒 Tools desactivadas (saludo / mensaje corto)")
@@ -944,25 +939,29 @@ Usuario: {user_message}"""
                         allowed_paths=getattr(
                             settings,
                             "ALLOWED_PATHS",
-                            ["./documents", "./uploads"],
+                            ["./documents", "./uploads", "./data/documents"],
                         )
                     )
                     body = (
                         search_context
                         if search_context and len(search_context) > 80
                         else (
-                            "Guía generada por Aiko.\n\n"
-                            "1. Introducción\n"
-                            "2. Principios\n"
-                            "3. Pasos prácticos\n"
-                            "4. Errores comunes\n"
-                            "5. Conclusión\n"
+                            clean_response
+                            if clean_response and len(clean_response) > 80
+                            else (
+                                "Guía generada por Aiko.\n\n"
+                                "1. Introducción\n"
+                                "2. Principios\n"
+                                "3. Pasos prácticos\n"
+                                "4. Errores comunes\n"
+                                "5. Conclusión\n"
+                            )
                         )
                     )
                     path_obj.parent.mkdir(parents=True, exist_ok=True)
                     creator.create_pdf(
                         path=full_path,
-                        title="Guía de dieta saludable para perder peso",
+                        title="Guía generada por Aiko",
                         content=body.strip(),
                         images=list(self._turn_images),
                     )
@@ -1002,7 +1001,7 @@ Usuario: {user_message}"""
                     body = (
                         search_context
                         if search_context and len(search_context) > 50
-                        else "Documento generado por Aiko."
+                        else (clean_response or "Documento generado por Aiko.")
                     )
                     path_obj.parent.mkdir(parents=True, exist_ok=True)
                     path_obj.write_text(
@@ -1041,18 +1040,18 @@ Usuario: {user_message}"""
                         allowed_paths=getattr(
                             settings,
                             "ALLOWED_PATHS",
-                            ["./documents", "./uploads"],
+                            ["./documents", "./uploads", "./data/documents"],
                         )
                     )
                     body = (
                         search_context
                         if search_context and len(search_context) > 80
-                        else "Documento generado por Aiko."
+                        else (clean_response or "Documento generado por Aiko.")
                     )
                     path_obj.parent.mkdir(parents=True, exist_ok=True)
                     creator.create_word(
                         path=full_path,
-                        title="Guía de dieta saludable para perder peso",
+                        title="Documento generado por Aiko",
                         content=body.strip(),
                         images=list(self._turn_images),
                     )

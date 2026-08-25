@@ -41,3 +41,4 @@ qrcode==7.4.2
 Pillow==10.4.0
 opencv-python-headless==4.8.1.78
 google-genai>=1.0.0
+reportlab>=4.0.0
