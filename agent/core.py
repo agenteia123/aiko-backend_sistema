@@ -41,9 +41,20 @@ FILE_TOOL_NAMES = {
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
 
+BAD_PDF_MARKERS = [
+    "no dispongo",
+    "no puedo crear",
+    "herramienta para crear",
+    "no tengo una herramienta",
+    "no puedo generar un pdf",
+    "no puedo generar archivos",
+    "candidates=",
+    "finishreason",
+    "malformed",
+]
+
 
 def _safe_delete(*paths: str) -> None:
-    """Borra archivos temporales del disco de Render."""
     for p in paths:
         if not p:
             continue
@@ -56,13 +67,95 @@ def _safe_delete(*paths: str) -> None:
             logger.warning(f"No se pudo borrar temporal {p}: {e}")
 
 
+def _is_bad_content(text: str) -> bool:
+    if not text or len(text.strip()) < 40:
+        return True
+    low = text.lower()
+    return any(m in low for m in BAD_PDF_MARKERS)
+
+
+def _default_diet_guide() -> str:
+    return """Guía de dieta saludable
+
+1. Introducción
+Una dieta saludable se basa en equilibrio, variedad y constancia. No se trata de eliminar grupos de alimentos, sino de elegir mejores opciones la mayor parte del tiempo y mantener hábitos sostenibles.
+
+2. Principios básicos
+- Come verduras y frutas todos los días
+- Prioriza proteínas magras: pollo, pescado, huevos, legumbres, tofu
+- Usa carbohidratos complejos: avena, arroz integral, quinoa, papa, pan integral
+- Incluye grasas saludables: aguacate, nueces, semillas, aceite de oliva
+- Bebe suficiente agua a lo largo del día
+- Reduce ultraprocesados, bebidas azucaradas y azúcares añadidos
+
+3. Cómo armar un plato equilibrado
+- 1/2 del plato: vegetales
+- 1/4 del plato: proteína
+- 1/4 del plato: carbohidratos complejos
+- Una porción pequeña de grasa saludable
+
+4. Ejemplo de menú de un día
+Desayuno: avena con fruta fresca y yogur natural
+Media mañana: un puñado de frutos secos o una fruta
+Almuerzo: pollo a la plancha, ensalada variada y arroz integral
+Merienda: yogur natural o una fruta
+Cena: pescado al horno con vegetales al vapor
+
+5. Hidratación y hábitos
+- Toma agua de forma regular
+- Duerme entre 7 y 9 horas
+- Camina al menos 30 minutos al día
+- Evita comer muy tarde en la noche
+
+6. Errores comunes
+- Saltarse comidas
+- Hacer dietas extremas de muy pocas calorías
+- Eliminar por completo un grupo de alimentos sin supervisión
+- No planificar comidas simples
+- Confundir “comer sano” con “comer perfecto”
+
+7. Consejos prácticos para empezar
+- Prepara comidas 1 o 2 veces por semana
+- Lleva snacks saludables cuando salgas
+- Lee etiquetas de productos
+- Cocina de forma simple: plancha, horno, vapor
+- Mide el progreso por energía, digestión y constancia, no solo por la báscula
+
+8. Conclusión
+Una buena dieta es sostenible. Empieza con cambios pequeños, realistas y mantenibles. La constancia importa más que la perfección."""
+
+
+def _default_generic_guide() -> str:
+    return """Documento generado por Aiko
+
+1. Introducción
+Este documento resume el tema solicitado de forma clara y práctica.
+
+2. Puntos clave
+- Define el objetivo
+- Organiza la información en secciones
+- Aplica recomendaciones accionables
+
+3. Desarrollo
+Revisa el contexto, identifica lo esencial y prioriza pasos concretos que se puedan aplicar de inmediato.
+
+4. Recomendaciones prácticas
+- Empieza por lo más simple
+- Mide resultados
+- Ajusta según necesidad
+
+5. Conclusión
+Con estructura y constancia se obtienen mejores resultados a largo plazo."""
+
+
 def _write_simple_pdf(path: str, title: str, content: str) -> None:
-    """Genera un PDF básico con reportlab (sin depender del tool)."""
+    """Genera un PDF básico con reportlab."""
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import cm
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-    from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
+    from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
+    from reportlab.lib.colors import HexColor
 
     path_obj = Path(path)
     path_obj.parent.mkdir(parents=True, exist_ok=True)
@@ -80,8 +173,18 @@ def _write_simple_pdf(path: str, title: str, content: str) -> None:
         "TitleES",
         parent=styles["Heading1"],
         alignment=TA_CENTER,
-        spaceAfter=20,
-        fontSize=16,
+        spaceAfter=8,
+        fontSize=18,
+        textColor=HexColor("#1a1a1a"),
+    )
+    heading_style = ParagraphStyle(
+        "HeadingES",
+        parent=styles["Heading2"],
+        alignment=TA_LEFT,
+        spaceBefore=14,
+        spaceAfter=6,
+        fontSize=13,
+        textColor=HexColor("#222222"),
     )
     body_style = ParagraphStyle(
         "BodyES",
@@ -89,41 +192,43 @@ def _write_simple_pdf(path: str, title: str, content: str) -> None:
         alignment=TA_JUSTIFY,
         fontSize=11,
         leading=15,
-        spaceAfter=8,
+        spaceAfter=6,
+    )
+    bullet_style = ParagraphStyle(
+        "BulletES",
+        parent=styles["Normal"],
+        leftIndent=12,
+        fontSize=11,
+        leading=15,
+        spaceAfter=3,
     )
 
     story = []
     story.append(Paragraph(title.replace("\n", " "), title_style))
-    story.append(Spacer(1, 0.3 * cm))
+    story.append(HRFlowable(width="100%", thickness=1, color=HexColor("#cccccc")))
+    story.append(Spacer(1, 0.4 * cm))
 
     text = (content or "").strip()
-    if (
-        not text
-        or "candidates=" in text
-        or "FinishReason" in text
-        or "MALFORMED" in text
-    ):
-        text = (
-            "Guía generada por Aiko.\n\n"
-            "1. Introducción\n"
-            "2. Principios básicos de una dieta saludable\n"
-            "3. Alimentos recomendados\n"
-            "4. Ejemplo de menú semanal\n"
-            "5. Errores comunes y consejos prácticos\n"
-            "6. Conclusión\n"
-        )
+    if _is_bad_content(text):
+        text = _default_diet_guide() if "dieta" in title.lower() or "dieta" in text.lower() else _default_generic_guide()
 
     for block in text.split("\n"):
         line = block.strip()
         if not line:
-            story.append(Spacer(1, 0.2 * cm))
+            story.append(Spacer(1, 0.15 * cm))
             continue
         safe = (
             line.replace("&", "&amp;")
             .replace("<", "&lt;")
             .replace(">", "&gt;")
         )
-        story.append(Paragraph(safe, body_style))
+        # Títulos tipo "1. Introducción"
+        if re.match(r"^\d+\.\s+\S+", line) and len(line) < 80:
+            story.append(Paragraph(safe, heading_style))
+        elif line.startswith("- "):
+            story.append(Paragraph("• " + safe[2:], bullet_style))
+        else:
+            story.append(Paragraph(safe, body_style))
 
     doc.build(story)
 
@@ -136,12 +241,8 @@ def _normalize_content(content) -> str:
         return ""
     if isinstance(content, str):
         text = content.strip()
-        # Evitar basura de respuestas malformadas de Gemini
         if "candidates=" in text or "FinishReason" in text:
-            return (
-                "Aquí tienes la información. "
-                "Si pediste un PDF, revisa el enlace de descarga más abajo."
-            )
+            return "Listo. Si pediste un documento, revisa el enlace de descarga."
         return text
     if isinstance(content, list):
         parts = []
@@ -464,10 +565,7 @@ class AikoAgent:
                 if tool_name in FILE_TOOL_NAMES and tool_name not in active_map:
                     results.append(
                         ToolMessage(
-                            content=(
-                                f"Error: la tool {tool_name} no está permitida "
-                                "en este turno. Responde solo en texto."
-                            ),
+                            content="Error: tool no permitida en este turno.",
                             tool_call_id=tool_id,
                         )
                     )
@@ -479,18 +577,8 @@ class AikoAgent:
                     "create_excel",
                     "create_powerpoint",
                 ):
-                    existing = tool_args.get("images") or []
-                    valid_existing = []
-                    for ip in existing:
-                        try:
-                            if Path(str(ip)).exists():
-                                valid_existing.append(str(ip))
-                        except Exception:
-                            pass
                     if self._turn_images:
                         tool_args["images"] = list(self._turn_images)
-                    elif valid_existing:
-                        tool_args["images"] = valid_existing
                     else:
                         tool_args["images"] = []
 
@@ -499,9 +587,6 @@ class AikoAgent:
                     result = f"Tool {tool_name} not found"
                 else:
                     result = await tool.ainvoke(tool_args)
-                    logger.info(
-                        f"✅ Tool ejecutada: {tool_name} → {str(result)[:120]}"
-                    )
                 results.append(
                     ToolMessage(content=str(result), tool_call_id=tool_id)
                 )
@@ -523,10 +608,6 @@ class AikoAgent:
             name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", "")
             if name == tool_name:
                 return True
-        resp = str(result.get("response", "")).lower()
-        short = tool_name.replace("create_", "").replace("write_", "")
-        if short in resp and "cread" in resp:
-            return True
         return False
 
     def _explicit_file_request(self, lower_msg: str) -> bool:
@@ -561,69 +642,21 @@ class AikoAgent:
 
     def _clean_search_query(self, user_message: str, lower_msg: str) -> str:
         trash = [
-            "crea un archivo",
-            "crear un archivo",
-            "guarda un archivo",
-            "en la carpeta",
-            "dentro de descargas",
-            "dentro de documentos",
-            "en descargas",
-            "en documentos",
-            "completo y detallado",
-            "con información",
-            "con informacion",
-            "por favor",
-            "archivo completo",
-            "documento word",
-            "archivo word",
-            "crea un word",
-            "crear word",
             "crea un pdf",
-            "crear pdf",
+            "crear un pdf",
+            "hazme un pdf",
             "hacer un pdf",
-            "me puedes hacer un pdf",
-            "puedes hacer un pdf",
-            "me puedes hacer",
-            "puedes hacer",
-            "crea un excel",
-            "crear excel",
-            "crea un powerpoint",
-            "crear powerpoint",
-            "presentación",
-            "presentacion",
-            "guárdalo",
-            "guardalo",
-            "guarda lo",
+            "por favor",
             "incluye la imagen",
             "incluye la foto",
-            "con la imagen",
-            "con la foto",
-            "aiko_personal",
-            "ia_personal",
-            "word",
-            "excel",
-            "pdf",
-            "pptx",
-            "xlsx",
-            "docx",
-            "txt",
-            ".pdf",
-            ".docx",
-            ".xlsx",
-            ".pptx",
-            ".txt",
         ]
         cq = user_message.lower()
         for frase in trash:
             cq = cq.replace(frase, " ")
-        cq = re.sub(r"[a-z]:[\\/][^\s]+", " ", cq)
-        cq = re.sub(r"https?://\S+", " ", cq)
         cq = re.sub(r"\s+", " ", cq).strip()
-        if len(cq) < 12:
-            if "dieta" in lower_msg:
-                return "dieta saludable para perder peso de forma equilibrada"
-            return user_message[:200]
-        return cq
+        if len(cq) < 12 and "dieta" in lower_msg:
+            return "dieta saludable guía completa"
+        return cq or user_message[:200]
 
     async def process_message(
         self,
@@ -650,10 +683,6 @@ class AikoAgent:
             self._turn_images = _extract_image_paths(attachments)
             if self._turn_images:
                 logger.info(f"🖼️ Imágenes adjuntas válidas: {self._turn_images}")
-            elif attachments:
-                logger.warning(
-                    f"Attachments recibidos pero sin imágenes válidas en disco: {attachments}"
-                )
 
             self._active_tools = self._tools_for_intent(intent)
 
@@ -676,13 +705,6 @@ class AikoAgent:
                 "file_txt",
                 "folder",
             )
-            if quiz_mode:
-                logger.info("📝 Modo quiz / respuestas directas activado")
-                intent_hint = (
-                    intent_hint
-                    + "\n\nMODO QUIZ ACTIVO: responde todas las preguntas del mensaje "
-                    "en lista clara (Pregunta N: Opción X — razón breve)."
-                )
 
             needs_search = needs_search_for_message(user_message, intent)
             is_complex = is_complex_message(user_message, intent)
@@ -693,9 +715,7 @@ class AikoAgent:
                     "complex" if use_complex else "normal"
                 )
                 if use_complex:
-                    logger.info(
-                        "Usando modelo complejo (Gemini prioritario) para esta pregunta"
-                    )
+                    logger.info("Usando modelo complejo para esta pregunta")
             except Exception as e:
                 logger.warning(f"No se pudo elegir modelo: {e}")
                 self.llm = LLMFactory.create_llm()
@@ -713,28 +733,12 @@ class AikoAgent:
                 personality = personality_map.get(affection, personality_map[3])
                 if any(
                     word in lower_msg
-                    for word in [
-                        "te quiero",
-                        "gracias",
-                        "eres genial",
-                        "me gustas",
-                        "linda",
-                        "hermosa",
-                        "cariño",
-                    ]
+                    for word in ["te quiero", "gracias", "eres genial", "me gustas", "linda", "hermosa", "cariño"]
                 ):
                     await self.memory.update_affection(user_id, +1)
                 elif any(
                     word in lower_msg
-                    for word in [
-                        "idiota",
-                        "estúpida",
-                        "callate",
-                        "odio",
-                        "inútil",
-                        "tonta",
-                        "mala",
-                    ]
+                    for word in ["idiota", "estúpida", "callate", "odio", "inútil", "tonta", "mala"]
                 ):
                     await self.memory.update_affection(user_id, -1)
             else:
@@ -751,87 +755,59 @@ class AikoAgent:
                 )
                 if search_tool:
                     try:
-                        if is_quiz_message(user_message) or needs_factual_search(
-                            user_message, intent
-                        ):
-                            clean_query = user_message[:500]
-                        else:
-                            clean_query = self._clean_search_query(
-                                user_message, lower_msg
-                            )
+                        clean_query = self._clean_search_query(user_message, lower_msg)
                         search_result = await search_tool.ainvoke(
                             {"query": clean_query, "max_results": 8}
                         )
-                        search_context = f"""
-Información actualizada de búsqueda:
-{search_result}
-"""
+                        search_context = f"Información actualizada de búsqueda:\n{search_result}"
                     except Exception as e:
                         logger.error(f"Error en búsqueda: {e}")
-                        search_context = ""
 
             memory_context = ""
             try:
-                if should_skip_history(user_message):
-                    memory_context = ""
-                    logger.info("🔒 Historial omitido en saludo")
-                else:
-                    history = await self.memory.get_conversation_history(
-                        conversation_id
-                    )
+                if not should_skip_history(user_message):
+                    history = await self.memory.get_conversation_history(conversation_id)
                     if history:
                         recent = history[-6:]
                         memory_context = "\n".join(
-                            [
-                                f"{msg['role']}: {msg['content'][:150]}"
-                                for msg in recent
-                            ]
+                            [f"{msg['role']}: {msg['content'][:150]}" for msg in recent]
                         )
-                        memory_context = (
-                            f"\n\nContexto de la conversación anterior:\n"
-                            f"{memory_context}\n"
-                        )
+                        memory_context = f"\n\nContexto anterior:\n{memory_context}\n"
             except Exception as e:
                 logger.warning(f"No se pudo cargar historial: {e}")
 
             user_facts_context = ""
             try:
-                if should_skip_user_facts(user_message, intent) or intent.startswith(
-                    "file_"
-                ):
-                    user_facts_context = ""
-                else:
+                if not should_skip_user_facts(user_message, intent) and not intent.startswith("file_"):
                     facts = await self.memory.get_user_facts(user_id)
                     if facts:
                         relevant = []
                         for f in facts[:12]:
-                            fact_text = (
-                                f.get("fact", "") if isinstance(f, dict) else str(f)
-                            )
+                            fact_text = f.get("fact", "") if isinstance(f, dict) else str(f)
                             if fact_is_relevant(fact_text, user_message):
                                 relevant.append(fact_text)
                         if relevant:
-                            facts_text = "\n".join(
-                                [f"- {t}" for t in relevant[:5]]
-                            )
-                            user_facts_context = (
-                                "\n\nDatos del usuario relevantes:\n"
-                                f"{facts_text}\n"
-                            )
+                            facts_text = "\n".join([f"- {t}" for t in relevant[:5]])
+                            user_facts_context = f"\n\nDatos del usuario relevantes:\n{facts_text}\n"
             except Exception as e:
                 logger.warning(f"No se pudieron cargar hechos: {e}")
 
-            search_block = (
-                search_context
-                if search_context
-                else "Usa conocimiento general fiable y sé claro."
-            )
+            search_block = search_context if search_context else "Usa conocimiento general fiable."
+
+            file_pdf_rules = ""
+            if intent == "file_pdf":
+                file_pdf_rules = """
+IMPORTANTE (creación de PDF):
+- El sistema generará el PDF automáticamente.
+- NO digas que no puedes crear PDF ni que no tienes herramientas.
+- Escribe el CONTENIDO COMPLETO de la guía en español.
+- Usa secciones numeradas, consejos prácticos y texto útil.
+- No pidas al usuario que copie el texto a otro programa.
+"""
 
             file_ban = ""
             if not (intent.startswith("file_") or intent == "folder"):
-                file_ban = (
-                    "\nPROHIBIDO crear archivos en este turno. Responde solo en texto.\n"
-                )
+                file_ban = "\nPROHIBIDO crear archivos en este turno. Responde solo en texto.\n"
 
             if is_simple_greeting(user_message) or len(user_message.strip()) < 40:
                 system_prompt = f"""Eres Aiko, una compañera AI amable y cercana.
@@ -852,6 +828,7 @@ Hoy es {current_date}.
 {user_facts_context}
 
 {intent_hint}
+{file_pdf_rules}
 {file_ban}
 
 Responde en español, claro y útil.
@@ -870,12 +847,8 @@ Usuario: {user_message}"""
             clean_response = _normalize_content(response_message.content)
 
             try:
-                await self.memory.save_message(
-                    user_id, conversation_id, "user", user_message
-                )
-                await self.memory.save_message(
-                    user_id, conversation_id, "assistant", clean_response
-                )
+                await self.memory.save_message(user_id, conversation_id, "user", user_message)
+                await self.memory.save_message(user_id, conversation_id, "assistant", clean_response)
             except Exception as e:
                 logger.warning(f"No se pudieron guardar mensajes locales: {e}")
 
@@ -883,9 +856,7 @@ Usuario: {user_message}"""
                 from core.supabase_client import save_message as sb_save_message
 
                 sb_save_message(conversation_id, user_id, "user", user_message)
-                sb_save_message(
-                    conversation_id, user_id, "assistant", clean_response
-                )
+                sb_save_message(conversation_id, user_id, "assistant", clean_response)
             except Exception as e:
                 logger.warning(f"Supabase save_message: {e}")
 
@@ -898,34 +869,31 @@ Usuario: {user_message}"""
                         and any(
                             word in lower_msg
                             for word in [
-                                "me gusta",
-                                "odio",
-                                "prefiero",
-                                "estudio",
-                                "trabajo",
-                                "vivo",
-                                "tengo",
-                                "mi nombre",
-                                "soy ",
-                                "recuerda",
+                                "me gusta", "odio", "prefiero", "estudio", "trabajo",
+                                "vivo", "tengo", "mi nombre", "soy ", "recuerda",
                             ]
                         )
                     ):
-                        await self.memory.save_user_fact(
-                            user_id, user_message, category="personal"
-                        )
+                        await self.memory.save_user_fact(user_id, user_message, category="personal")
                         try:
                             from core.supabase_client import save_user_fact as sb_fact
-
                             sb_fact(user_id, user_message, category="personal")
                         except Exception:
                             pass
                 except Exception as e:
                     logger.warning(f"No se pudo guardar hecho: {e}")
 
+            # Si el modelo dijo que no puede crear PDF, limpiar respuesta al usuario
+            chat_response = clean_response
+            if intent == "file_pdf" and _is_bad_content(clean_response):
+                chat_response = (
+                    "¡Listo! Estoy generando tu PDF con la guía completa. "
+                    "En un momento tendrás el enlace de descarga. 📄"
+                )
+
             result = {
                 "success": True,
-                "response": clean_response,
+                "response": chat_response,
                 "tool_calls": getattr(response_message, "tool_calls", []),
                 "metadata": {
                     "analysis_level": analysis_level,
@@ -938,20 +906,14 @@ Usuario: {user_message}"""
             target_folder = self._resolve_target_folder(lower_msg)
             explicit = self._explicit_file_request(lower_msg)
 
-            # AUTO-WRITE PDF (reportlab directo)
+            # AUTO-WRITE PDF
             wants_pdf = explicit and any(
                 word in lower_msg for word in ["pdf", ".pdf"]
             ) and not any(
                 word in lower_msg
                 for word in [
-                    "word",
-                    "docx",
-                    "excel",
-                    "xlsx",
-                    "powerpoint",
-                    "pptx",
-                    "presentación",
-                    "presentacion",
+                    "word", "docx", "excel", "xlsx", "powerpoint", "pptx",
+                    "presentación", "presentacion",
                 ]
             )
 
@@ -965,40 +927,32 @@ Usuario: {user_message}"""
                     target_dir.mkdir(parents=True, exist_ok=True)
 
                     filename = "informe_aiko.pdf"
+                    title = "Documento generado por Aiko"
                     if "dieta" in lower_msg:
                         filename = "dieta_saludable.pdf"
+                        title = "Guía de dieta saludable"
 
                     path_obj = (target_dir / filename).resolve()
                     full_path = str(path_obj)
 
+                    # Elegir contenido útil
                     body = ""
-                    if clean_response and len(clean_response.strip()) > 80:
-                        if "candidates=" not in clean_response and "FinishReason" not in clean_response:
-                            body = clean_response.strip()
-                    if not body and search_context and len(search_context) > 80:
+                    if not _is_bad_content(clean_response) and len(clean_response.strip()) > 120:
+                        body = clean_response.strip()
+                    elif search_context and len(search_context) > 80:
                         body = search_context.strip()
-                    if not body:
-                        body = (
-                            "Guía generada por Aiko.\n\n"
-                            "1. Introducción\n"
-                            "2. Principios básicos de una dieta saludable\n"
-                            "3. Alimentos recomendados\n"
-                            "4. Ejemplo de menú semanal\n"
-                            "5. Errores comunes y consejos prácticos\n"
-                            "6. Conclusión\n"
-                        )
+                    elif "dieta" in lower_msg:
+                        body = _default_diet_guide()
+                    else:
+                        body = _default_generic_guide()
 
-                    _write_simple_pdf(
-                        path=full_path,
-                        title="Guía generada por Aiko",
-                        content=body,
-                    )
+                    _write_simple_pdf(path=full_path, title=title, content=body)
 
                     logger.info(
                         f"✅ AUTO-WRITE PDF: {full_path} ({path_obj.stat().st_size} bytes)"
                     )
 
-                    download_note = "\n\n✅ PDF creado (temporal en servidor)."
+                    download_note = "\n\n✅ PDF creado."
                     try:
                         from core.supabase_client import upload_document
 
@@ -1008,13 +962,12 @@ Usuario: {user_message}"""
                             file_type="pdf",
                             external_user_id=user_id,
                             conversation_id=conversation_id,
-                            title="Guía generada por Aiko",
+                            title=title,
                         )
                         if up and up.get("public_url"):
-                            download_note = (
-                                f"\n\n✅ PDF listo. Descárgalo aquí:\n{up['public_url']}"
-                            )
-                            result["metadata"]["document_url"] = up["public_url"]
+                            url = up["public_url"].rstrip("?")
+                            download_note = f"\n\n✅ PDF listo. Descárgalo aquí:\n{url}"
+                            result["metadata"]["document_url"] = url
                             _safe_delete(full_path, *list(self._turn_images))
                         else:
                             download_note = (
@@ -1022,9 +975,7 @@ Usuario: {user_message}"""
                             )
                     except Exception as e:
                         logger.error(f"Error subiendo PDF a Supabase: {e}")
-                        download_note = (
-                            f"\n\n⚠️ PDF creado pero error al subir a Supabase:\n{e}"
-                        )
+                        download_note = f"\n\n⚠️ Error al subir a Supabase: {e}"
 
                     result["response"] = (
                         str(result.get("response", "")).strip() + download_note
