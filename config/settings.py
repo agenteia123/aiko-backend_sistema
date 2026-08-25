@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
     GOOGLE_API_KEY: str = ""
     GROQ_API_KEY: str = ""
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_MODEL: str = "openai/gpt-oss-20b"
     GROK_API_KEY: str = ""
 
     # Ollama (PC local)
@@ -37,10 +37,15 @@ class Settings(BaseSettings):
     # Analysis Level
     ANALYSIS_LEVEL: Literal["fast", "balanced", "deep"] = "balanced"
 
-    # Memory
+    # Memory local (SQLite / Chroma)
     CHROMA_PERSIST_DIR: str = "./data/chroma"
     DB_PATH: str = "./data/aiko.db"
     MEMORY_SEARCH_LIMIT: int = 5
+
+    # Supabase (DB + Storage)
+    SUPABASE_URL: str = ""
+    SUPABASE_SERVICE_ROLE_KEY: str = ""
+    SUPABASE_STORAGE_BUCKET: str = "documents"
 
     # Voice
     STT_PROVIDER: Literal["whisper", "google"] = "whisper"
@@ -54,13 +59,16 @@ class Settings(BaseSettings):
     ENABLE_DOCUMENT_READER: bool = True
     ENABLE_IMAGE_ANALYSIS: bool = True
 
-    # Allowed filesystem paths
+    # Allowed filesystem paths (local + Render)
     ALLOWED_PATHS: list[str] = [
+        "./documents",
+        "./uploads",
+        "./data",
+        "./data/documents",
+        "./data/uploads",
         "C:/Users/User/OneDrive/Documentos",
         "C:/Users/User/Downloads",
         "C:/Users/User/Documents",
-        "./documents",
-        "./uploads",
     ]
 
     # Translation

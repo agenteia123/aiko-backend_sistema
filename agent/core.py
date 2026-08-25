@@ -68,7 +68,6 @@ def _normalize_content(content) -> str:
 
 
 def _extract_image_paths(attachments: list | None) -> list[str]:
-    """Obtiene rutas locales reales de imágenes subidas."""
     paths: list[str] = []
     for att in attachments or []:
         if not isinstance(att, dict):
@@ -467,7 +466,6 @@ class AikoAgent:
         )
 
     def _resolve_target_folder(self, lower_msg: str) -> str:
-        # En Render (Linux) usamos carpeta local del proyecto
         return str(Path("data") / "documents")
 
     def _clean_search_query(self, user_message: str, lower_msg: str) -> str:
@@ -571,7 +569,6 @@ class AikoAgent:
 
             self._active_tools = self._tools_for_intent(intent)
 
-            # En saludos / mensajes cortos NO enviamos tools
             if is_simple_greeting(user_message) or len(user_message.strip()) < 40:
                 self._active_tools = []
                 logger.info("🔒 Tools desactivadas (saludo / mensaje corto)")
@@ -602,8 +599,6 @@ class AikoAgent:
 
             needs_search = needs_search_for_message(user_message, intent)
             is_complex = is_complex_message(user_message, intent)
-
-            # Respuestas largas o creación de documentos → Gemini prioritario
             use_complex = is_complex or intent.startswith("file_") or intent == "folder"
 
             try:
@@ -798,7 +793,6 @@ REGLA OBLIGATORIA:
 - NUNCA inventes rutas como C:/Users/.../diet.jpg si no están en la lista.
 """
 
-            # Prompt corto para saludos / mensajes simples
             if is_simple_greeting(user_message) or len(user_message.strip()) < 40:
                 system_prompt = f"""Eres Aiko, una compañera AI amable, cercana y un poco juguetona.
 Hoy es {current_date}.
@@ -852,6 +846,7 @@ Usuario: {user_message}"""
             response_message = result_graph["messages"][-1]
             clean_response = _normalize_content(response_message.content)
 
+            # Memoria local
             try:
                 await self.memory.save_message(
                     user_id, conversation_id, "user", user_message
@@ -860,7 +855,18 @@ Usuario: {user_message}"""
                     user_id, conversation_id, "assistant", clean_response
                 )
             except Exception as e:
-                logger.warning(f"No se pudieron guardar mensajes: {e}")
+                logger.warning(f"No se pudieron guardar mensajes locales: {e}")
+
+            # Mirror en Supabase
+            try:
+                from core.supabase_client import save_message as sb_save_message
+
+                sb_save_message(conversation_id, user_id, "user", user_message)
+                sb_save_message(
+                    conversation_id, user_id, "assistant", clean_response
+                )
+            except Exception as e:
+                logger.warning(f"Supabase save_message: {e}")
 
             if user_id == MAIN_USER_ID:
                 try:
@@ -887,6 +893,12 @@ Usuario: {user_message}"""
                         await self.memory.save_user_fact(
                             user_id, user_message, category="personal"
                         )
+                        try:
+                            from core.supabase_client import save_user_fact as sb_fact
+
+                            sb_fact(user_id, user_message, category="personal")
+                        except Exception:
+                            pass
                         logger.info(f"Hecho guardado: {user_message[:50]}")
                 except Exception as e:
                     logger.warning(f"No se pudo guardar hecho: {e}")
@@ -966,9 +978,30 @@ Usuario: {user_message}"""
                         images=list(self._turn_images),
                     )
                     logger.info(f"✅ AUTO-WRITE PDF: {full_path}")
+
+                    # Subir a Supabase Storage
+                    download_note = f"\n\n✅ PDF creado en servidor:\n{full_path}"
+                    try:
+                        from core.supabase_client import upload_document
+
+                        up = upload_document(
+                            local_path=full_path,
+                            filename=path_obj.name,
+                            file_type="pdf",
+                            external_user_id=user_id,
+                            conversation_id=conversation_id,
+                            title="Guía generada por Aiko",
+                        )
+                        if up and up.get("public_url"):
+                            download_note = (
+                                f"\n\n✅ PDF listo. Descárgalo aquí:\n{up['public_url']}"
+                            )
+                            result["metadata"]["document_url"] = up["public_url"]
+                    except Exception as e:
+                        logger.error(f"Error subiendo PDF a Supabase: {e}")
+
                     result["response"] = (
-                        str(result.get("response", "")).strip()
-                        + f"\n\n✅ Documento PDF guardado en:\n{full_path}"
+                        str(result.get("response", "")).strip() + download_note
                     ).strip()
                     result["metadata"]["auto_write_pdf"] = True
                 except Exception as e:
@@ -1056,9 +1089,29 @@ Usuario: {user_message}"""
                         images=list(self._turn_images),
                     )
                     logger.info(f"✅ AUTO-WRITE WORD: {full_path}")
+
+                    download_note = f"\n\n✅ Documento Word guardado en:\n{full_path}"
+                    try:
+                        from core.supabase_client import upload_document
+
+                        up = upload_document(
+                            local_path=full_path,
+                            filename=path_obj.name,
+                            file_type="docx",
+                            external_user_id=user_id,
+                            conversation_id=conversation_id,
+                            title="Documento generado por Aiko",
+                        )
+                        if up and up.get("public_url"):
+                            download_note = (
+                                f"\n\n✅ Word listo. Descárgalo aquí:\n{up['public_url']}"
+                            )
+                            result["metadata"]["document_url"] = up["public_url"]
+                    except Exception as e:
+                        logger.error(f"Error subiendo Word a Supabase: {e}")
+
                     result["response"] = (
-                        str(result.get("response", "")).strip()
-                        + f"\n\n✅ Documento Word guardado en:\n{full_path}"
+                        str(result.get("response", "")).strip() + download_note
                     ).strip()
                     result["metadata"]["auto_write_word"] = True
                 except Exception as e:
@@ -1067,7 +1120,7 @@ Usuario: {user_message}"""
             return result
 
         except Exception as e:
-            logger.error(f"Error processing message: {e}", exc_info=True)
+            logger.error(f"Error processing message: {e}", exp_info=True)
             return {
                 "success": False,
                 "error": str(e),
