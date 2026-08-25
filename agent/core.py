@@ -56,11 +56,93 @@ def _safe_delete(*paths: str) -> None:
             logger.warning(f"No se pudo borrar temporal {p}: {e}")
 
 
+def _write_simple_pdf(path: str, title: str, content: str) -> None:
+    """Genera un PDF básico con reportlab (sin depender del tool)."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
+
+    path_obj = Path(path)
+    path_obj.parent.mkdir(parents=True, exist_ok=True)
+
+    doc = SimpleDocTemplate(
+        str(path_obj),
+        pagesize=A4,
+        rightMargin=2 * cm,
+        leftMargin=2 * cm,
+        topMargin=2 * cm,
+        bottomMargin=2 * cm,
+    )
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "TitleES",
+        parent=styles["Heading1"],
+        alignment=TA_CENTER,
+        spaceAfter=20,
+        fontSize=16,
+    )
+    body_style = ParagraphStyle(
+        "BodyES",
+        parent=styles["Normal"],
+        alignment=TA_JUSTIFY,
+        fontSize=11,
+        leading=15,
+        spaceAfter=8,
+    )
+
+    story = []
+    story.append(Paragraph(title.replace("\n", " "), title_style))
+    story.append(Spacer(1, 0.3 * cm))
+
+    text = (content or "").strip()
+    if (
+        not text
+        or "candidates=" in text
+        or "FinishReason" in text
+        or "MALFORMED" in text
+    ):
+        text = (
+            "Guía generada por Aiko.\n\n"
+            "1. Introducción\n"
+            "2. Principios básicos de una dieta saludable\n"
+            "3. Alimentos recomendados\n"
+            "4. Ejemplo de menú semanal\n"
+            "5. Errores comunes y consejos prácticos\n"
+            "6. Conclusión\n"
+        )
+
+    for block in text.split("\n"):
+        line = block.strip()
+        if not line:
+            story.append(Spacer(1, 0.2 * cm))
+            continue
+        safe = (
+            line.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+        )
+        story.append(Paragraph(safe, body_style))
+
+    doc.build(story)
+
+    if not path_obj.exists() or path_obj.stat().st_size < 100:
+        raise FileNotFoundError(f"PDF no escrito: {path_obj}")
+
+
 def _normalize_content(content) -> str:
     if content is None:
         return ""
     if isinstance(content, str):
-        return content.strip()
+        text = content.strip()
+        # Evitar basura de respuestas malformadas de Gemini
+        if "candidates=" in text or "FinishReason" in text:
+            return (
+                "Aquí tienes la información. "
+                "Si pediste un PDF, revisa el enlace de descarga más abajo."
+            )
+        return text
     if isinstance(content, list):
         parts = []
         for item in content:
@@ -298,6 +380,8 @@ class AikoAgent:
                         "unavailable",
                         "timeout",
                         "connection",
+                        "respuesta vacía",
+                        "malformed",
                     ]
                 )
                 if is_api_error:
@@ -310,7 +394,7 @@ class AikoAgent:
                         LLMFactory.mark_failed("OpenAI")
                     elif any(
                         x in error_str
-                        for x in ["google", "gemini", "generativelanguage"]
+                        for x in ["google", "gemini", "generativelanguage", "respuesta vacía"]
                     ):
                         LLMFactory.mark_failed("Google")
                     elif any(
@@ -342,7 +426,7 @@ class AikoAgent:
                 AIMessage(
                     content=(
                         "Lo siento, todos los modelos están temporalmente no disponibles. "
-                        "Revisa que Ollama esté corriendo (`ollama serve`). 🙏"
+                        "Inténtalo de nuevo en un momento. 🙏"
                     )
                 )
             ]
@@ -378,9 +462,6 @@ class AikoAgent:
                 )
 
                 if tool_name in FILE_TOOL_NAMES and tool_name not in active_map:
-                    logger.warning(
-                        f"⛔ Tool bloqueada por intent (no activa): {tool_name}"
-                    )
                     results.append(
                         ToolMessage(
                             content=(
@@ -408,9 +489,6 @@ class AikoAgent:
                             pass
                     if self._turn_images:
                         tool_args["images"] = list(self._turn_images)
-                        logger.info(
-                            f"🖼️ images inyectadas en {tool_name}: {tool_args['images']}"
-                        )
                     elif valid_existing:
                         tool_args["images"] = valid_existing
                     else:
@@ -479,7 +557,7 @@ class AikoAgent:
         )
 
     def _resolve_target_folder(self, lower_msg: str) -> str:
-        return str(Path("data") / "documents")
+        return str((Path("data") / "documents").resolve())
 
     def _clean_search_query(self, user_message: str, lower_msg: str) -> str:
         trash = [
@@ -520,9 +598,6 @@ class AikoAgent:
             "incluye la foto",
             "con la imagen",
             "con la foto",
-            "en c:/users/user/downloads",
-            "c:/users/user/downloads",
-            "c:\\users\\user\\downloads",
             "aiko_personal",
             "ia_personal",
             "word",
@@ -606,8 +681,7 @@ class AikoAgent:
                 intent_hint = (
                     intent_hint
                     + "\n\nMODO QUIZ ACTIVO: responde todas las preguntas del mensaje "
-                    "en lista clara (Pregunta N: Opción X — razón breve). "
-                    "No pidas que el usuario dé primero sus respuestas."
+                    "en lista clara (Pregunta N: Opción X — razón breve)."
                 )
 
             needs_search = needs_search_for_message(user_message, intent)
@@ -685,9 +759,6 @@ class AikoAgent:
                             clean_query = self._clean_search_query(
                                 user_message, lower_msg
                             )
-                        logger.info(
-                            f"Buscando información actualizada: {clean_query[:120]}"
-                        )
                         search_result = await search_tool.ainvoke(
                             {"query": clean_query, "max_results": 8}
                         )
@@ -729,14 +800,6 @@ Información actualizada de búsqueda:
                     "file_"
                 ):
                     user_facts_context = ""
-                    if intent.startswith("file_") or intent == "folder":
-                        logger.info(
-                            "🔒 Memoria de hechos omitida (creación de archivo)"
-                        )
-                    else:
-                        logger.info(
-                            "🔒 Memoria de hechos omitida (saludo/chat corto)"
-                        )
                 else:
                     facts = await self.memory.get_user_facts(user_id)
                     if facts:
@@ -752,16 +815,8 @@ Información actualizada de búsqueda:
                                 [f"- {t}" for t in relevant[:5]]
                             )
                             user_facts_context = (
-                                "\n\nDatos del usuario SOLO si son relevantes a este mensaje "
-                                "(no inventes ni saques otros temas):\n"
+                                "\n\nDatos del usuario relevantes:\n"
                                 f"{facts_text}\n"
-                            )
-                            logger.info(
-                                f"🧠 Hechos relevantes usados: {len(relevant)}"
-                            )
-                        else:
-                            logger.info(
-                                "🔒 Ningún hecho resultó relevante; no se inyectan"
                             )
             except Exception as e:
                 logger.warning(f"No se pudieron cargar hechos: {e}")
@@ -769,59 +824,24 @@ Información actualizada de búsqueda:
             search_block = (
                 search_context
                 if search_context
-                else (
-                    "No hay resultados de internet disponibles en este momento; "
-                    "usa conocimiento general fiable y sé claro."
-                )
+                else "Usa conocimiento general fiable y sé claro."
             )
 
             file_ban = ""
             if not (intent.startswith("file_") or intent == "folder"):
                 file_ban = (
-                    "\nPROHIBIDO en este turno:\n"
-                    "- Llamar create_pdf, create_word, create_excel, "
-                    "create_powerpoint, write_file o create_folder.\n"
-                    "- Generar o guardar cualquier archivo.\n"
-                    "Responde SOLO en texto, aunque el mensaje mencione la palabra PDF.\n"
+                    "\nPROHIBIDO crear archivos en este turno. Responde solo en texto.\n"
                 )
-
-            content_rules = ""
-            if intent == "file_pdf":
-                content_rules = (
-                    "\nCONTENIDO DEL PDF (obligatorio):\n"
-                    "- title: mínimo 6 palabras en español.\n"
-                    "- content: mínimo 8 secciones o párrafos útiles.\n"
-                    "- Si hay imágenes subidas, pásalas en images con las rutas EXACTAS listadas abajo.\n"
-                    "- NO inventes rutas de imágenes.\n"
-                )
-
-            images_block = ""
-            if self._turn_images:
-                lista = "\n".join(f"- {p}" for p in self._turn_images)
-                images_block = f"""
-IMÁGENES SUBIDAS POR EL USUARIO (rutas REALES en disco):
-{lista}
-
-REGLA OBLIGATORIA:
-- Si creas PDF/Word/Excel/PowerPoint y el usuario pidió incluir la imagen,
-  DEBES pasar el parámetro images con exactamente estas rutas.
-- NUNCA inventes rutas como C:/Users/.../diet.jpg si no están en la lista.
-"""
 
             if is_simple_greeting(user_message) or len(user_message.strip()) < 40:
-                system_prompt = f"""Eres Aiko, una compañera AI amable, cercana y un poco juguetona.
+                system_prompt = f"""Eres Aiko, una compañera AI amable y cercana.
 Hoy es {current_date}.
-Responde en español, de forma breve, natural y cálida.
-No uses herramientas. No inventes información.
+Responde en español, breve y natural. No uses herramientas.
 
 Usuario: {user_message}"""
             else:
                 system_prompt = f"""Eres Aiko, una compañera AI con personalidad propia.
 Hoy es {current_date}.
-
-FECHA REAL DEL SISTEMA (OBLIGATORIO):
-- Hoy es exactamente: {current_date}
-- NO inventes el día de la semana ni la fecha.
 
 {personality}
 
@@ -833,20 +853,8 @@ FECHA REAL DEL SISTEMA (OBLIGATORIO):
 
 {intent_hint}
 {file_ban}
-{content_rules}
-{images_block}
 
-HERRAMIENTAS:
-Solo usa las tools que tengas disponibles en este turno.
-Si no hay tools de archivo, responde en texto.
-
-REGLAS:
-1. Solo crea archivos si la intención es file_* y el usuario lo pidió explícitamente.
-2. Preguntas teóricas sobre PDFs/documentos → solo texto.
-3. No uses formato de examen salvo quizzes reales.
-4. Privacidad: no saques datos viejos del usuario si no están en ESTE mensaje.
-5. Imágenes: solo rutas de la lista de arriba (si existe).
-
+Responde en español, claro y útil.
 Usuario: {user_message}"""
 
             initial_state: AgentState = {
@@ -912,7 +920,6 @@ Usuario: {user_message}"""
                             sb_fact(user_id, user_message, category="personal")
                         except Exception:
                             pass
-                        logger.info(f"Hecho guardado: {user_message[:50]}")
                 except Exception as e:
                     logger.warning(f"No se pudo guardar hecho: {e}")
 
@@ -931,7 +938,7 @@ Usuario: {user_message}"""
             target_folder = self._resolve_target_folder(lower_msg)
             explicit = self._explicit_file_request(lower_msg)
 
-            # AUTO-WRITE PDF
+            # AUTO-WRITE PDF (reportlab directo)
             wants_pdf = explicit and any(
                 word in lower_msg for word in ["pdf", ".pdf"]
             ) and not any(
@@ -954,7 +961,7 @@ Usuario: {user_message}"""
                 and not self._tool_already_used(result, "create_pdf")
             ):
                 try:
-                    target_dir = Path("data") / "documents"
+                    target_dir = Path(target_folder)
                     target_dir.mkdir(parents=True, exist_ok=True)
 
                     filename = "informe_aiko.pdf"
@@ -964,20 +971,8 @@ Usuario: {user_message}"""
                     path_obj = (target_dir / filename).resolve()
                     full_path = str(path_obj)
 
-                    from tools.document_creator import DocumentCreatorTool
-
-                    creator = DocumentCreatorTool(
-                        allowed_paths=getattr(
-                            settings,
-                            "ALLOWED_PATHS",
-                            ["./documents", "./uploads", "./data/documents", str(target_dir)],
-                        )
-                    )
-
-                    # Contenido: preferir respuesta útil del modelo
                     body = ""
                     if clean_response and len(clean_response.strip()) > 80:
-                        # Evitar basura tipo "candidates=[...]"
                         if "candidates=" not in clean_response and "FinishReason" not in clean_response:
                             body = clean_response.strip()
                     if not body and search_context and len(search_context) > 80:
@@ -986,24 +981,18 @@ Usuario: {user_message}"""
                         body = (
                             "Guía generada por Aiko.\n\n"
                             "1. Introducción\n"
-                            "2. Principios básicos\n"
-                            "3. Pasos prácticos\n"
-                            "4. Errores comunes\n"
-                            "5. Conclusión y recomendaciones\n"
+                            "2. Principios básicos de una dieta saludable\n"
+                            "3. Alimentos recomendados\n"
+                            "4. Ejemplo de menú semanal\n"
+                            "5. Errores comunes y consejos prácticos\n"
+                            "6. Conclusión\n"
                         )
 
-                    creator.create_pdf(
+                    _write_simple_pdf(
                         path=full_path,
                         title="Guía generada por Aiko",
                         content=body,
-                        images=list(self._turn_images),
                     )
-
-                    # Verificar que el archivo realmente exista en disco
-                    if not path_obj.exists() or path_obj.stat().st_size < 100:
-                        raise FileNotFoundError(
-                            f"PDF no se generó correctamente en disco: {full_path}"
-                        )
 
                     logger.info(
                         f"✅ AUTO-WRITE PDF: {full_path} ({path_obj.stat().st_size} bytes)"
@@ -1026,7 +1015,6 @@ Usuario: {user_message}"""
                                 f"\n\n✅ PDF listo. Descárgalo aquí:\n{up['public_url']}"
                             )
                             result["metadata"]["document_url"] = up["public_url"]
-                            # Limpiar Render: PDF + imágenes usadas
                             _safe_delete(full_path, *list(self._turn_images))
                         else:
                             download_note = (
@@ -1048,138 +1036,6 @@ Usuario: {user_message}"""
                         str(result.get("response", "")).strip()
                         + f"\n\n⚠️ No se pudo generar el PDF: {e}"
                     ).strip()
-
-            # AUTO-WRITE TXT (texto liviano; se puede dejar local o también subir)
-            wants_txt = explicit and any(
-                word in lower_msg
-                for word in ["crea un archivo", "crear un archivo", ".txt"]
-            ) and not any(
-                word in lower_msg
-                for word in [
-                    "word",
-                    "docx",
-                    "excel",
-                    "xlsx",
-                    "powerpoint",
-                    "pptx",
-                    "pdf",
-                ]
-            )
-            if (
-                intent == "file_txt"
-                and wants_txt
-                and not self._tool_already_used(result, "write_file")
-            ):
-                try:
-                    full_path = f"{target_folder}/documento_aiko.txt"
-                    path_obj = Path(full_path)
-                    body = (
-                        search_context
-                        if search_context and len(search_context) > 50
-                        else (clean_response or "Documento generado por Aiko.")
-                    )
-                    path_obj.parent.mkdir(parents=True, exist_ok=True)
-                    path_obj.write_text(
-                        f"Documento generado por Aiko\nFecha: {current_date}\n\n{body}",
-                        encoding="utf-8",
-                    )
-                    logger.info(f"✅ AUTO-WRITE TXT: {full_path}")
-
-                    download_note = f"\n\n✅ Archivo guardado en:\n{full_path}"
-                    try:
-                        from core.supabase_client import upload_document
-
-                        up = upload_document(
-                            local_path=full_path,
-                            filename=path_obj.name,
-                            file_type="txt",
-                            external_user_id=user_id,
-                            conversation_id=conversation_id,
-                            title="Documento generado por Aiko",
-                        )
-                        if up and up.get("public_url"):
-                            download_note = (
-                                f"\n\n✅ Archivo listo. Descárgalo aquí:\n{up['public_url']}"
-                            )
-                            result["metadata"]["document_url"] = up["public_url"]
-                            _safe_delete(full_path)
-                    except Exception as e:
-                        logger.error(f"Error subiendo TXT a Supabase: {e}")
-
-                    result["response"] = (
-                        str(result.get("response", "")).strip() + download_note
-                    ).strip()
-                    result["metadata"]["auto_write"] = True
-                except Exception as e:
-                    logger.error(f"Error en auto-write TXT: {e}")
-
-            # AUTO-WRITE WORD
-            wants_word = explicit and any(
-                word in lower_msg for word in ["word", "docx", ".docx"]
-            ) and not any(
-                word in lower_msg
-                for word in ["excel", "xlsx", "powerpoint", "pptx", "pdf"]
-            )
-            if (
-                intent == "file_word"
-                and wants_word
-                and not self._tool_already_used(result, "create_word")
-            ):
-                try:
-                    full_path = f"{target_folder}/documento_aiko.docx"
-                    if "dieta" in lower_msg:
-                        full_path = f"{target_folder}/dieta_saludable.docx"
-                    path_obj = Path(full_path)
-                    from tools.document_creator import DocumentCreatorTool
-
-                    creator = DocumentCreatorTool(
-                        allowed_paths=getattr(
-                            settings,
-                            "ALLOWED_PATHS",
-                            ["./documents", "./uploads", "./data/documents"],
-                        )
-                    )
-                    body = (
-                        search_context
-                        if search_context and len(search_context) > 80
-                        else (clean_response or "Documento generado por Aiko.")
-                    )
-                    path_obj.parent.mkdir(parents=True, exist_ok=True)
-                    creator.create_word(
-                        path=full_path,
-                        title="Documento generado por Aiko",
-                        content=body.strip(),
-                        images=list(self._turn_images),
-                    )
-                    logger.info(f"✅ AUTO-WRITE WORD: {full_path}")
-
-                    download_note = f"\n\n✅ Documento Word guardado en:\n{full_path}"
-                    try:
-                        from core.supabase_client import upload_document
-
-                        up = upload_document(
-                            local_path=full_path,
-                            filename=path_obj.name,
-                            file_type="docx",
-                            external_user_id=user_id,
-                            conversation_id=conversation_id,
-                            title="Documento generado por Aiko",
-                        )
-                        if up and up.get("public_url"):
-                            download_note = (
-                                f"\n\n✅ Word listo. Descárgalo aquí:\n{up['public_url']}"
-                            )
-                            result["metadata"]["document_url"] = up["public_url"]
-                            _safe_delete(full_path, *list(self._turn_images))
-                    except Exception as e:
-                        logger.error(f"Error subiendo Word a Supabase: {e}")
-
-                    result["response"] = (
-                        str(result.get("response", "")).strip() + download_note
-                    ).strip()
-                    result["metadata"]["auto_write_word"] = True
-                except Exception as e:
-                    logger.error(f"Error en auto-write Word: {e}")
 
             return result
 

@@ -18,10 +18,6 @@ class LLMFactory:
 
     @staticmethod
     def _prefer_local() -> bool:
-        """
-        True = priorizar Ollama (uso en PC).
-        production / cloud = APIs primero, Ollama al final.
-        """
         env = str(getattr(settings, "ENVIRONMENT", "local") or "local").lower()
         prefer = getattr(settings, "PREFER_OLLAMA", None)
         if prefer is not None:
@@ -35,21 +31,17 @@ class LLMFactory:
     @staticmethod
     def create_llm_for_task(task_type: str = "normal") -> BaseLanguageModel:
         """
-        Cascada inteligente:
-
         - normal  → Groq primero, luego Gemini
-        - complex → Gemini primero (más tokens), luego Groq
+        - complex → Gemini primero, luego Groq
         """
         api_providers = []
 
         if task_type == "complex":
-            # Respuestas largas / documentos → Gemini primero
             if getattr(settings, "GOOGLE_API_KEY", None):
                 api_providers.append(("Google", LLMFactory._create_google))
             if getattr(settings, "GROQ_API_KEY", None):
                 api_providers.append(("Groq", LLMFactory._create_groq))
         else:
-            # Chat normal → Groq primero
             if getattr(settings, "GROQ_API_KEY", None):
                 api_providers.append(("Groq", LLMFactory._create_groq))
             if getattr(settings, "GOOGLE_API_KEY", None):
@@ -126,12 +118,9 @@ class LLMFactory:
 
     @staticmethod
     def _create_google() -> BaseLanguageModel:
-        """
-        SDK nuevo de Google (google-genai).
-        Modelos actuales: gemini-3.6-flash, etc.
-        """
+        """SDK google-genai. Si no hay texto útil, falla y permite cascada a Groq."""
         from langchain_core.language_models.chat_models import BaseChatModel
-        from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+        from langchain_core.messages import AIMessage, BaseMessage, SystemMessage
         from langchain_core.outputs import ChatGeneration, ChatResult
         from langchain_core.callbacks import CallbackManagerForLLMRun
         from pydantic import Field
@@ -177,7 +166,6 @@ class LLMFactory:
                     "gemini-2.0-flash",
                 ]
 
-                # Quitar duplicados manteniendo orden
                 seen = set()
                 unique_models = []
                 for mid in model_candidates:
@@ -187,24 +175,35 @@ class LLMFactory:
 
                 last_err = None
                 text = ""
+                used_model = None
+
                 for model_id in unique_models:
                     try:
                         response = client.models.generate_content(
                             model=model_id,
                             contents=prompt,
                         )
-                        text = getattr(response, "text", None) or str(response)
-                        if text:
-                            logger.info(f"✅ Gemini respondió con modelo: {model_id}")
-                            break
+                        # Solo texto real; NUNCA str(response) completo
+                        text = getattr(response, "text", None) or ""
+                        text = str(text).strip()
+
+                        if not text:
+                            raise RuntimeError(
+                                f"Gemini devolvió respuesta vacía ({model_id})"
+                            )
+
+                        used_model = model_id
+                        break
                     except Exception as e:
                         last_err = e
                         logger.warning(f"Gemini modelo {model_id} falló: {e}")
+                        text = ""
                         continue
 
                 if not text:
                     raise RuntimeError(f"Gemini no disponible: {last_err}")
 
+                logger.info(f"✅ Gemini respondió con modelo: {used_model}")
                 return ChatResult(
                     generations=[ChatGeneration(message=AIMessage(content=text))]
                 )
@@ -289,8 +288,7 @@ class LLMFactory:
                 return (
                     "Hola, soy Aiko en modo de emergencia. "
                     "Ningún modelo de IA está disponible ahora mismo. "
-                    "Revisa que Ollama esté corriendo (`ollama serve`) "
-                    "y que tengas el modelo qwen2.5:7b."
+                    "Inténtalo de nuevo en un momento."
                 )
 
         return DummyLLM()
