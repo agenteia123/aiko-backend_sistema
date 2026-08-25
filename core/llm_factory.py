@@ -128,7 +128,7 @@ class LLMFactory:
     def _create_google() -> BaseLanguageModel:
         """
         SDK nuevo de Google (google-genai).
-        Compatible con keys AQ... y modelos Gemini 2.x.
+        Modelos actuales: gemini-3.6-flash, etc.
         """
         from langchain_core.language_models.chat_models import BaseChatModel
         from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -137,7 +137,7 @@ class LLMFactory:
         from pydantic import Field
 
         class GeminiChat(BaseChatModel):
-            model_name: str = Field(default="gemini-2.0-flash")
+            model_name: str = Field(default="gemini-3.6-flash")
             api_key: str = Field(default="")
             temperature: float = Field(default=0.5)
 
@@ -171,15 +171,23 @@ class LLMFactory:
 
                 model_candidates = [
                     self.model_name,
+                    "gemini-3.6-flash",
+                    "gemini-3.5-flash",
+                    "gemini-2.5-flash",
                     "gemini-2.0-flash",
-                    "gemini-2.0-flash-001",
-                    "gemini-1.5-flash",
-                    "gemini-1.5-pro",
                 ]
+
+                # Quitar duplicados manteniendo orden
+                seen = set()
+                unique_models = []
+                for mid in model_candidates:
+                    if mid and mid not in seen:
+                        seen.add(mid)
+                        unique_models.append(mid)
 
                 last_err = None
                 text = ""
-                for model_id in model_candidates:
+                for model_id in unique_models:
                     try:
                         response = client.models.generate_content(
                             model=model_id,
@@ -187,6 +195,7 @@ class LLMFactory:
                         )
                         text = getattr(response, "text", None) or str(response)
                         if text:
+                            logger.info(f"✅ Gemini respondió con modelo: {model_id}")
                             break
                     except Exception as e:
                         last_err = e
@@ -218,7 +227,7 @@ class LLMFactory:
 
         return GeminiChat(
             api_key=api_key,
-            model_name="gemini-2.0-flash",
+            model_name="gemini-3.6-flash",
             temperature=0.5,
         )
 
