@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage
-from langgraph.graph import StateGraph, START, END
+from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
 
@@ -231,7 +231,7 @@ class AikoAgent:
         workflow = StateGraph(AgentState)
         workflow.add_node("agent", self._agent_node)
         workflow.add_node("tools", self._tools_node)
-        workflow.add_edge(START, "agent")
+        workflow.set_entry_point("agent")
         workflow.add_conditional_edges(
             "agent",
             self._should_continue,
