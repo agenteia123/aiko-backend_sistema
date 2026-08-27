@@ -117,7 +117,6 @@ def _is_reminder_message(text: str) -> bool:
 
 
 def _parse_reminder(text: str) -> dict | None:
-    """Detecta un pedido de recordatorio y extrae texto + cuándo."""
     raw = (text or "").strip()
     if not raw or not _is_reminder_message(raw):
         return None
@@ -137,50 +136,43 @@ def _parse_reminder(text: str) -> dict | None:
             if m:
                 hour = int(m.group(1))
                 minute = int(m.group(2) or 0)
-                now = datetime.now()
+                now = datetime.now().astimezone()
                 when_today = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
                 if when_today <= now:
                     when_today = when_today + timedelta(days=1)
                 minutes = max(1, int((when_today - now).total_seconds() // 60))
 
-    when = datetime.now() + timedelta(minutes=minutes)
+    when = datetime.now().astimezone() + timedelta(minutes=minutes)
 
     body = raw
     body = re.sub(
         r"(pon(me)?|crea(r)?|agrega(r)?|programa(r)?)\s+(un\s+)?recordatorio\s*",
-        "",
+        " ",
         body,
         flags=re.I,
     )
-    body = re.sub(
-        r"(recu[eé]rdame|av[ií]same)\s*(que\s*)?",
-        "",
-        body,
-        flags=re.I,
-    )
+    body = re.sub(r"(recu[eé]rdame|av[ií]same)\s*(que\s*)?", " ", body, flags=re.I)
     body = re.sub(
         r"(dentro de|en)\s+\d+\s*(minutos?|mins?|horas?)",
-        "",
+        " ",
         body,
         flags=re.I,
     )
-    body = re.sub(r"\ba las\s+\d{1,2}(?::\d{2})?\b", "", body, flags=re.I)
+    body = re.sub(r"\ba las\s+\d{1,2}(?::\d{2})?\b", " ", body, flags=re.I)
+    body = re.sub(r"\b(para|por favor|please|ahora)\b", " ", body, flags=re.I)
     body = re.sub(r"\s+", " ", body).strip(" :-–—,.")
-    body = body or "Recordatorio"
+
+    if not body or body.lower() in {"para", "por", "un", "una", "el", "la", "de"}:
+        body = "Recordatorio"
 
     return {
         "text": body,
         "minutes": minutes,
-        "at": when.isoformat(timespec="minutes"),
+        "at": when.isoformat(timespec="seconds"),
     }
 
 
 def build_memory_blocks(user_message: str, intent: str, history: list, facts: list, docs: list):
-    """
-    style  -> cómo le gusta que trabajes (sí en PDF y preguntas)
-    memory -> solo el MISMO tema, nunca al crear archivo
-    docs   -> si pregunta por archivos o crea otro
-    """
     is_file = str(intent).startswith("file_") or bool(
         re.search(r"\b(pdf|docx|word|excel|documento)\b", user_message or "", re.I)
     )
@@ -330,7 +322,6 @@ Con estructura y constancia se obtienen mejores resultados a largo plazo."""
 
 
 def _write_simple_pdf(path: str, title: str, content: str) -> None:
-    """Genera un PDF básico con reportlab."""
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import cm
@@ -633,40 +624,16 @@ class AikoAgent:
                 is_api_error = any(
                     x in error_str
                     for x in [
-                        "rate limit",
-                        "429",
-                        "quota",
-                        "insufficient",
-                        "too many requests",
-                        "tokens per day",
-                        "tpd",
-                        "tokens per minute",
-                        "tpm",
-                        "payload too large",
-                        "413",
-                        "insufficient_quota",
-                        "billing",
-                        "credit balance",
-                        "resource_exhausted",
-                        "model not found",
-                        "not_found",
-                        "no longer available",
-                        "404",
-                        "invalid-argument",
-                        "invalid_request_error",
-                        "authentication",
-                        "401",
-                        "403",
-                        "bad request",
-                        "400",
-                        "permission",
-                        "forbidden",
-                        "overloaded",
-                        "unavailable",
-                        "timeout",
-                        "connection",
-                        "respuesta vacía",
-                        "malformed",
+                        "rate limit", "429", "quota", "insufficient",
+                        "too many requests", "tokens per day", "tpd",
+                        "tokens per minute", "tpm", "payload too large", "413",
+                        "insufficient_quota", "billing", "credit balance",
+                        "resource_exhausted", "model not found", "not_found",
+                        "no longer available", "404", "invalid-argument",
+                        "invalid_request_error", "authentication", "401", "403",
+                        "bad request", "400", "permission", "forbidden",
+                        "overloaded", "unavailable", "timeout", "connection",
+                        "respuesta vacía", "malformed",
                     ]
                 )
                 if is_api_error:
@@ -682,10 +649,7 @@ class AikoAgent:
                         for x in ["google", "gemini", "generativelanguage", "respuesta vacía"]
                     ):
                         LLMFactory.mark_failed("Google")
-                    elif any(
-                        x in error_str
-                        for x in ["anthropic", "claude", "credit balance"]
-                    ):
+                    elif any(x in error_str for x in ["anthropic", "claude", "credit balance"]):
                         LLMFactory.mark_failed("Anthropic")
                     elif any(x in error_str for x in ["grok", "x.ai", "xai"]):
                         LLMFactory.mark_failed("Grok")
@@ -701,9 +665,7 @@ class AikoAgent:
                     logger.error(f"Agent node error: {e}")
                     return {
                         "messages": [
-                            AIMessage(
-                                content="Lo siento, tuve un error procesando tu mensaje."
-                            )
+                            AIMessage(content="Lo siento, tuve un error procesando tu mensaje.")
                         ]
                     }
         return {
@@ -731,9 +693,7 @@ class AikoAgent:
         for tool_call in last_message.tool_calls:
             try:
                 tool_name = (
-                    tool_call.get("name")
-                    if isinstance(tool_call, dict)
-                    else tool_call.name
+                    tool_call.get("name") if isinstance(tool_call, dict) else tool_call.name
                 )
                 tool_args = (
                     tool_call.get("args", {})
@@ -761,24 +721,17 @@ class AikoAgent:
                     "create_excel",
                     "create_powerpoint",
                 ):
-                    if self._turn_images:
-                        tool_args["images"] = list(self._turn_images)
-                    else:
-                        tool_args["images"] = []
+                    tool_args["images"] = list(self._turn_images) if self._turn_images else []
 
                 tool = active_map.get(tool_name) or self.tool_map.get(tool_name)
                 if not tool:
                     result = f"Tool {tool_name} not found"
                 else:
                     result = await tool.ainvoke(tool_args)
-                results.append(
-                    ToolMessage(content=str(result), tool_call_id=tool_id)
-                )
+                results.append(ToolMessage(content=str(result), tool_call_id=tool_id))
             except Exception as e:
                 logger.error(f"Tool error: {e}")
-                results.append(
-                    ToolMessage(content=f"Error: {str(e)}", tool_call_id=tool_id)
-                )
+                results.append(ToolMessage(content=f"Error: {str(e)}", tool_call_id=tool_id))
         return {"messages": results}
 
     def _should_continue(self, state: AgentState) -> str:
@@ -798,26 +751,12 @@ class AikoAgent:
         return any(
             w in lower_msg
             for w in [
-                "crea un pdf",
-                "crear un pdf",
-                "hazme un pdf",
-                "hacer un pdf",
-                "quiero un pdf",
-                "me puedes hacer un pdf",
-                "puedes hacer un pdf",
-                "me puedes crear un pdf",
-                "crea un word",
-                "crear un word",
-                "crea un excel",
-                "crear un excel",
-                "crea un powerpoint",
-                "crear un powerpoint",
-                "crea un archivo",
-                "crear un archivo",
-                "guarda un archivo",
-                "hazme un",
-                "quiero un word",
-                "quiero un excel",
+                "crea un pdf", "crear un pdf", "hazme un pdf", "hacer un pdf",
+                "quiero un pdf", "me puedes hacer un pdf", "puedes hacer un pdf",
+                "me puedes crear un pdf", "crea un word", "crear un word",
+                "crea un excel", "crear un excel", "crea un powerpoint",
+                "crear un powerpoint", "crea un archivo", "crear un archivo",
+                "guarda un archivo", "hazme un", "quiero un word", "quiero un excel",
             ]
         )
 
@@ -826,13 +765,8 @@ class AikoAgent:
 
     def _clean_search_query(self, user_message: str, lower_msg: str) -> str:
         trash = [
-            "crea un pdf",
-            "crear un pdf",
-            "hazme un pdf",
-            "hacer un pdf",
-            "por favor",
-            "incluye la imagen",
-            "incluye la foto",
+            "crea un pdf", "crear un pdf", "hazme un pdf", "hacer un pdf",
+            "por favor", "incluye la imagen", "incluye la foto",
         ]
         cq = user_message.lower()
         for frase in trash:
@@ -852,31 +786,24 @@ class AikoAgent:
     ) -> dict:
         search_context = ""
         try:
-            logger.info(
-                f"Processing message from {user_id}: {user_message[:50]}..."
-            )
+            logger.info(f"Processing message from {user_id}: {user_message[:50]}...")
 
             current_date = datetime.now().strftime("%A, %d de %B de %Y")
             MAIN_USER_ID = "user-123"
             lower_msg = user_message.lower()
 
-            # ---- Recordatorio: no pasar por el LLM ----
             reminder = _parse_reminder(user_message)
             if reminder:
                 when_dt = datetime.fromisoformat(reminder["at"])
-                when_txt = when_dt.strftime("%H:%M")
+                when_txt = when_dt.astimezone().strftime("%H:%M")
                 logger.info(f"⏰ Recordatorio interceptado: {reminder}")
                 reply = (
                     f"Listo, Ale. Te aviso en {reminder['minutes']} min "
                     f"(a las {when_txt}): {reminder['text']} ⏰"
                 )
                 try:
-                    await self.memory.save_message(
-                        user_id, conversation_id, "user", user_message
-                    )
-                    await self.memory.save_message(
-                        user_id, conversation_id, "assistant", reply
-                    )
+                    await self.memory.save_message(user_id, conversation_id, "user", user_message)
+                    await self.memory.save_message(user_id, conversation_id, "assistant", reply)
                 except Exception as e:
                     logger.warning(f"No se pudieron guardar mensajes locales: {e}")
                 try:
@@ -924,12 +851,7 @@ class AikoAgent:
             quiz_mode = (
                 is_quiz_message(user_message) or wants_direct_answers(user_message)
             ) and intent not in (
-                "file_pdf",
-                "file_word",
-                "file_excel",
-                "file_pptx",
-                "file_txt",
-                "folder",
+                "file_pdf", "file_word", "file_excel", "file_pptx", "file_txt", "folder",
             )
 
             needs_search = needs_search_for_message(user_message, intent)
@@ -1197,10 +1119,7 @@ Usuario: {user_message}"""
                         body = _default_generic_guide()
 
                     _write_simple_pdf(path=full_path, title=title, content=body)
-
-                    logger.info(
-                        f"✅ AUTO-WRITE PDF: {full_path} ({path_obj.stat().st_size} bytes)"
-                    )
+                    logger.info(f"✅ AUTO-WRITE PDF: {full_path} ({path_obj.stat().st_size} bytes)")
 
                     download_note = "\n\n✅ PDF creado."
                     try:

@@ -57,6 +57,7 @@ class ChatResponse(BaseModel):
     timestamp: int
     tool_calls: Optional[list] = None
     error: Optional[str] = None
+    metadata: Optional[dict] = None
 
 
 @router.post("/message", response_model=ChatResponse)
@@ -77,7 +78,6 @@ async def send_message(
         )
 
         if not result.get("success"):
-            # Devolvemos 200 con success=false para que el front muestre el error
             return ChatResponse(
                 success=False,
                 message_id=str(uuid.uuid4()),
@@ -85,6 +85,7 @@ async def send_message(
                 conversation_id=request.conversation_id,
                 timestamp=int(time.time() * 1000),
                 error=result.get("error", "Unknown error"),
+                metadata=result.get("metadata"),
             )
 
         return ChatResponse(
@@ -94,6 +95,7 @@ async def send_message(
             conversation_id=request.conversation_id,
             timestamp=int(time.time() * 1000),
             tool_calls=result.get("tool_calls"),
+            metadata=result.get("metadata"),
         )
     except Exception as e:
         logger.error(f"Chat error: {e}", exc_info=True)
@@ -104,6 +106,7 @@ async def send_message(
             conversation_id=request.conversation_id,
             timestamp=int(time.time() * 1000),
             error=str(e),
+            metadata=None,
         )
 
 
@@ -172,6 +175,7 @@ async def websocket_endpoint(
                     "success": result.get("success"),
                     "response": result.get("response"),
                     "error": result.get("error"),
+                    "metadata": result.get("metadata"),
                 }
             )
     except WebSocketDisconnect:
@@ -234,6 +238,7 @@ async def send_message_with_file(
             timestamp=int(time.time() * 1000),
             tool_calls=result.get("tool_calls"),
             error=result.get("error"),
+            metadata=result.get("metadata"),
         )
     except Exception as e:
         logger.error(f"File upload error: {e}", exc_info=True)
