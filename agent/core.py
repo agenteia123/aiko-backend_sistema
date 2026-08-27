@@ -53,6 +53,13 @@ BAD_PDF_MARKERS = [
     "malformed",
 ]
 
+_STYLE_HINTS = (
+    r"\b(detallad[oa]|extens[oa]|corto|resumen|checklist|lista numerada|"
+    r"en espa[nñ]ol|paso a paso|con ejemplos|formal|casual|"
+    r"con portada|sin rodeos|m[aá]s t[eé]cnico|m[aá]s simple|"
+    r"numerad[oa]|gu[ií]a completa)\b"
+)
+
 
 def _safe_delete(*paths: str) -> None:
     for p in paths:
@@ -72,6 +79,111 @@ def _is_bad_content(text: str) -> bool:
         return True
     low = text.lower()
     return any(m in low for m in BAD_PDF_MARKERS)
+
+
+def _is_style_instruction(text: str) -> bool:
+    t = (text or "").lower()
+    return bool(re.search(_STYLE_HINTS, t)) or bool(
+        re.search(
+            r"\b(hazlo as[ií]|como la vez anterior|igual que antes|como te dije|"
+            r"como el anterior|mismo formato|misma estructura)\b",
+            t,
+        )
+    )
+
+
+def _topic_overlap(a: str, b: str) -> bool:
+    stop = {
+        "el", "la", "los", "las", "un", "una", "de", "que", "y", "o", "en",
+        "con", "por", "para", "me", "te", "se", "al", "del", "es",
+        "crea", "crear", "pdf", "haz", "hacer", "aiko", "favor", "hola",
+        "como", "esta", "esto", "unos",
+    }
+    wa = {w for w in re.findall(r"[a-záéíóúñ]{4,}", (a or "").lower()) if w not in stop}
+    wb = {w for w in re.findall(r"[a-záéíóúñ]{4,}", (b or "").lower()) if w not in stop}
+    if not wa or not wb:
+        return False
+    return len(wa & wb) >= 2
+
+
+def build_memory_blocks(user_message: str, intent: str, history: list, facts: list, docs: list):
+    """
+    style  -> cómo le gusta que trabajes (sí en PDF y preguntas)
+    memory -> solo el MISMO tema, nunca al crear archivo
+    docs   -> si pregunta por archivos o crea otro
+    """
+    is_file = str(intent).startswith("file_") or bool(
+        re.search(r"\b(pdf|docx|word|excel|documento)\b", user_message or "", re.I)
+    )
+    is_short = len((user_message or "").split()) <= 4
+
+    style_context = ""
+    memory_context = ""
+    docs_context = ""
+
+    style_lines = []
+    for msg in history[-24:]:
+        if (msg.get("role") or "") not in ("user", "human"):
+            continue
+        content = (msg.get("content") or "").strip()
+        if _is_style_instruction(content):
+            style_lines.append(content[:180])
+    for f in facts[:20]:
+        text = f.get("fact", "") if isinstance(f, dict) else str(f)
+        if _is_style_instruction(text):
+            style_lines.append(text[:180])
+
+    seen = set()
+    uniq = []
+    for s in style_lines:
+        key = s.lower()
+        if key not in seen:
+            seen.add(key)
+            uniq.append(s)
+    if uniq and not is_short:
+        style_context = (
+            "\n\nPreferencias de trabajo del usuario "
+            "(aplica FORMATO y ESTILO; no copies el tema viejo):\n"
+            + "\n".join(f"- {s}" for s in uniq[:4])
+            + "\n"
+        )
+
+    if history and not is_file and not is_short:
+        lines = []
+        for msg in history[-12:]:
+            content = (msg.get("content") or "").strip()
+            if not content or content.strip() == (user_message or "").strip():
+                continue
+            if _topic_overlap(user_message, content):
+                role = msg.get("role", "user")
+                lines.append(f"{role}: {content[:220]}")
+        if lines:
+            memory_context = (
+                "\n\nContexto del MISMO tema (úsalo solo si ayuda a ESTA pregunta):\n"
+                + "\n".join(lines[-6:])
+                + "\n"
+            )
+
+    asks_docs = bool(
+        re.search(
+            r"\b(pdf|documento|archivo|el que creaste|qu[eé] generaste|descarga)\b",
+            user_message or "",
+            re.I,
+        )
+    )
+    if docs and (asks_docs or is_file):
+        doc_lines = []
+        for d in docs[:5]:
+            name = d.get("title") or d.get("filename") or "documento"
+            doc_lines.append(f"- {name}")
+        if doc_lines:
+            docs_context = (
+                "\n\nDocumentos ya existentes (no los reescribas salvo que lo pida):\n"
+                + "\n".join(doc_lines)
+                + "\n"
+            )
+
+    return memory_context, style_context, docs_context
 
 
 def _default_diet_guide() -> str:
@@ -210,7 +322,11 @@ def _write_simple_pdf(path: str, title: str, content: str) -> None:
 
     text = (content or "").strip()
     if _is_bad_content(text):
-        text = _default_diet_guide() if "dieta" in title.lower() or "dieta" in text.lower() else _default_generic_guide()
+        text = (
+            _default_diet_guide()
+            if "dieta" in title.lower() or "dieta" in text.lower()
+            else _default_generic_guide()
+        )
 
     for block in text.split("\n"):
         line = block.strip()
@@ -222,7 +338,6 @@ def _write_simple_pdf(path: str, title: str, content: str) -> None:
             .replace("<", "&lt;")
             .replace(">", "&gt;")
         )
-        # Títulos tipo "1. Introducción"
         if re.match(r"^\d+\.\s+\S+", line) and len(line) < 80:
             story.append(Paragraph(safe, heading_style))
         elif line.startswith("- "):
@@ -763,34 +878,46 @@ class AikoAgent:
                     except Exception as e:
                         logger.error(f"Error en búsqueda: {e}")
 
-            memory_context = ""
+            # ---- Memoria persistente: Supabase primero ----
+            history = []
+            facts = []
+            docs = []
             try:
-                if not should_skip_history(user_message):
-                    history = await self.memory.get_conversation_history(conversation_id)
-                    if history:
-                        recent = history[-6:]
-                        memory_context = "\n".join(
-                            [f"{msg['role']}: {msg['content'][:150]}" for msg in recent]
-                        )
-                        memory_context = f"\n\nContexto anterior:\n{memory_context}\n"
-            except Exception as e:
-                logger.warning(f"No se pudo cargar historial: {e}")
+                from core.supabase_client import (
+                    get_conversation_messages as sb_get_messages,
+                    get_recent_user_messages as sb_get_recent,
+                    get_user_facts as sb_get_facts,
+                    list_user_documents as sb_list_docs,
+                )
 
-            user_facts_context = ""
-            try:
-                if not should_skip_user_facts(user_message, intent) and not intent.startswith("file_"):
-                    facts = await self.memory.get_user_facts(user_id)
-                    if facts:
-                        relevant = []
-                        for f in facts[:12]:
-                            fact_text = f.get("fact", "") if isinstance(f, dict) else str(f)
-                            if fact_is_relevant(fact_text, user_message):
-                                relevant.append(fact_text)
-                        if relevant:
-                            facts_text = "\n".join([f"- {t}" for t in relevant[:5]])
-                            user_facts_context = f"\n\nDatos del usuario relevantes:\n{facts_text}\n"
+                history = sb_get_messages(conversation_id, user_id, limit=16) or []
+                if len(history) < 2:
+                    extra = sb_get_recent(user_id, limit=16) or []
+                    if extra:
+                        history = extra
+                facts = sb_get_facts(user_id, limit=20) or []
+                docs = sb_list_docs(user_id, limit=6) or []
             except Exception as e:
-                logger.warning(f"No se pudieron cargar hechos: {e}")
+                logger.warning(f"No se pudo leer Supabase: {e}")
+
+            if not history:
+                try:
+                    history = await self.memory.get_conversation_history(conversation_id) or []
+                except Exception:
+                    history = []
+            if not facts:
+                try:
+                    facts = await self.memory.get_user_facts(user_id) or []
+                except Exception:
+                    facts = []
+
+            memory_context, style_context, docs_context = build_memory_blocks(
+                user_message=user_message,
+                intent=intent,
+                history=history,
+                facts=facts,
+                docs=docs,
+            )
 
             search_block = search_context if search_context else "Usa conocimiento general fiable."
 
@@ -800,14 +927,23 @@ class AikoAgent:
 IMPORTANTE (creación de PDF):
 - El sistema generará el PDF automáticamente.
 - NO digas que no puedes crear PDF ni que no tienes herramientas.
-- Escribe el CONTENIDO COMPLETO de la guía en español.
-- Usa secciones numeradas, consejos prácticos y texto útil.
-- No pidas al usuario que copie el texto a otro programa.
+- Escribe el CONTENIDO COMPLETO de ESTA petición, en español.
+- Aplica las preferencias de estilo del usuario (detalle, listas, etc.) si existen.
+- NO copies un documento o un chat de OTRO tema.
+- Usa secciones numeradas y texto útil.
 """
 
             file_ban = ""
             if not (intent.startswith("file_") or intent == "folder"):
                 file_ban = "\nPROHIBIDO crear archivos en este turno. Responde solo en texto.\n"
+
+            memory_rules = """
+Reglas de memoria:
+- Preferencias de trabajo = CÓMO responder (largo, listas, idioma, tono).
+- Contexto del mismo tema = solo si encaja con ESTA pregunta.
+- Al crear PDF/documento: contenido nuevo de ESTA petición + estilo previo. No mezclar temas viejos.
+- No digas que no recuerdas si hay preferencias o contexto del mismo tema.
+"""
 
             if is_simple_greeting(user_message) or len(user_message.strip()) < 40:
                 system_prompt = f"""Eres Aiko, una compañera AI amable y cercana.
@@ -823,10 +959,11 @@ Hoy es {current_date}.
 
 {search_block}
 
+{style_context}
 {memory_context}
+{docs_context}
 
-{user_facts_context}
-
+{memory_rules}
 {intent_hint}
 {file_pdf_rules}
 {file_ban}
@@ -865,25 +1002,28 @@ Usuario: {user_message}"""
                     if (
                         not is_quiz_message(user_message)
                         and not is_simple_greeting(user_message)
-                        and not intent.startswith("file_")
-                        and any(
-                            word in lower_msg
-                            for word in [
-                                "me gusta", "odio", "prefiero", "estudio", "trabajo",
-                                "vivo", "tengo", "mi nombre", "soy ", "recuerda",
-                            ]
+                        and (
+                            any(
+                                word in lower_msg
+                                for word in [
+                                    "me gusta", "odio", "prefiero", "estudio", "trabajo",
+                                    "vivo", "tengo", "mi nombre", "soy ", "recuerda",
+                                ]
+                            )
+                            or _is_style_instruction(user_message)
                         )
                     ):
-                        await self.memory.save_user_fact(user_id, user_message, category="personal")
+                        category = "style" if _is_style_instruction(user_message) else "personal"
+                        await self.memory.save_user_fact(user_id, user_message, category=category)
                         try:
                             from core.supabase_client import save_user_fact as sb_fact
-                            sb_fact(user_id, user_message, category="personal")
+
+                            sb_fact(user_id, user_message, category=category)
                         except Exception:
                             pass
                 except Exception as e:
                     logger.warning(f"No se pudo guardar hecho: {e}")
 
-            # Si el modelo dijo que no puede crear PDF, limpiar respuesta al usuario
             chat_response = clean_response
             if intent == "file_pdf" and _is_bad_content(clean_response):
                 chat_response = (
@@ -906,7 +1046,6 @@ Usuario: {user_message}"""
             target_folder = self._resolve_target_folder(lower_msg)
             explicit = self._explicit_file_request(lower_msg)
 
-            # AUTO-WRITE PDF
             wants_pdf = explicit and any(
                 word in lower_msg for word in ["pdf", ".pdf"]
             ) and not any(
@@ -935,7 +1074,6 @@ Usuario: {user_message}"""
                     path_obj = (target_dir / filename).resolve()
                     full_path = str(path_obj)
 
-                    # Elegir contenido útil
                     body = ""
                     if not _is_bad_content(clean_response) and len(clean_response.strip()) > 120:
                         body = clean_response.strip()

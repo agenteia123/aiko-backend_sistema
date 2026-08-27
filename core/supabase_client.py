@@ -53,13 +53,11 @@ def is_supabase_ready() -> bool:
 
 
 def _safe_filename(name: str, file_type: str = "pdf") -> str:
-    """Nombre limpio para Storage y para Content-Disposition."""
     ext = f".{(file_type or 'pdf').lstrip('.').lower()}"
     base = (name or "documento").strip().replace("\\", "/").split("/")[-1]
     base = re.sub(r'[<>:"|?*]+', "", base)
     base = re.sub(r"\s+", "_", base).strip("._") or "documento"
     if not base.lower().endswith(ext):
-        # quita extensión previa rara y pone la correcta
         if "." in base:
             base = base.rsplit(".", 1)[0]
         base = f"{base}{ext}"
@@ -73,10 +71,6 @@ def _clean_public_url(url: str) -> str:
 
 
 def _with_download_param(url: str, filename: str) -> str:
-    """
-    ?download=archivo.pdf hace que el navegador baje el archivo
-    CON ese nombre (no 'anonymous').
-    """
     clean = _clean_public_url(url)
     if not clean:
         return clean
@@ -181,8 +175,89 @@ def save_message(
         return False
 
 
+def get_conversation_messages(
+    conversation_id: str,
+    external_user_id: str,
+    limit: int = 16,
+) -> list:
+    """Últimos mensajes de esa conversación. [{role, content}] cronológico."""
+    sb = get_supabase()
+    if not sb or not conversation_id:
+        return []
+    try:
+        conv_uuid = ensure_conversation(conversation_id, external_user_id)
+        if not conv_uuid:
+            return []
+        res = (
+            sb.table("messages")
+            .select("role, content, created_at")
+            .eq("conversation_id", conv_uuid)
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        rows = list(reversed(res.data or []))
+        out = []
+        for r in rows:
+            role = r.get("role") or "user"
+            if role == "assistant":
+                role = "user" if False else "aiko"
+            if role == "assistant":
+                role = "aiko"
+            content = (r.get("content") or "").strip()
+            if content:
+                out.append({"role": "aiko" if role in ("assistant", "aiko") else "user", "content": content[:900]})
+        return out
+    except Exception as e:
+        logger.warning(f"get_conversation_messages error: {e}")
+        return []
+
+
+def get_recent_user_messages(external_user_id: str, limit: int = 24) -> list:
+    """Mensajes recientes del usuario en cualquier chat."""
+    sb = get_supabase()
+    if not sb or not external_user_id:
+        return []
+    try:
+        convs = (
+            sb.table("conversations")
+            .select("id")
+            .eq("external_user_id", external_user_id)
+            .limit(25)
+            .execute()
+        )
+        ids = [c["id"] for c in (convs.data or [])]
+        if not ids:
+            return []
+        res = (
+            sb.table("messages")
+            .select("role, content, created_at")
+            .in_("conversation_id", ids)
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        rows = list(reversed(res.data or []))
+        out = []
+        for r in rows:
+            content = (r.get("content") or "").strip()
+            if not content:
+                continue
+            role = r.get("role") or "user"
+            out.append(
+                {
+                    "role": "aiko" if role in ("assistant", "aiko") else "user",
+                    "content": content[:900],
+                }
+            )
+        return out
+    except Exception as e:
+        logger.warning(f"get_recent_user_messages error: {e}")
+        return []
+
+
 # ------------------------------------------------------------------
-# Hechos (memoria)
+# Hechos
 # ------------------------------------------------------------------
 
 def save_user_fact(
@@ -286,8 +361,27 @@ def update_affection(external_user_id: str, delta: int) -> int:
 
 
 # ------------------------------------------------------------------
-# Storage: subir PDF/documento y registrar
+# Documentos
 # ------------------------------------------------------------------
+
+def list_user_documents(external_user_id: str, limit: int = 8) -> list:
+    sb = get_supabase()
+    if not sb or not external_user_id:
+        return []
+    try:
+        res = (
+            sb.table("documents")
+            .select("title, filename, public_url, file_type, created_at")
+            .eq("external_user_id", external_user_id)
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return res.data or []
+    except Exception as e:
+        logger.warning(f"list_user_documents error: {e}")
+        return []
+
 
 def upload_document(
     local_path: str,
@@ -297,13 +391,6 @@ def upload_document(
     conversation_id: str = None,
     title: str = None,
 ) -> Optional[dict]:
-    """
-    Sube un archivo local a Supabase Storage y registra en tabla documents.
-    Devuelve { public_url, download_url, view_url, storage_path, filename, id }.
-
-    public_url == download_url  → el chat usa esta para que al pulsar
-    se descargue CON el nombre del archivo (no anonymous).
-    """
     sb = get_supabase()
     if not sb:
         return None
