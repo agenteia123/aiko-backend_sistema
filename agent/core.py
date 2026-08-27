@@ -3,7 +3,7 @@
 import logging
 import re
 from typing import Annotated, TypedDict
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage
@@ -104,6 +104,75 @@ def _topic_overlap(a: str, b: str) -> bool:
     if not wa or not wb:
         return False
     return len(wa & wb) >= 2
+
+
+def _is_reminder_message(text: str) -> bool:
+    return bool(
+        re.search(
+            r"recordatorio|recu[eé]rdame|av[ií]same|alarm[ae]",
+            text or "",
+            re.I,
+        )
+    )
+
+
+def _parse_reminder(text: str) -> dict | None:
+    """Detecta un pedido de recordatorio y extrae texto + cuándo."""
+    raw = (text or "").strip()
+    if not raw or not _is_reminder_message(raw):
+        return None
+
+    t = raw.lower()
+    minutes = 5
+
+    m = re.search(r"(?:en|dentro de)\s+(\d+)\s*min", t)
+    if m:
+        minutes = max(1, int(m.group(1)))
+    else:
+        m = re.search(r"(?:en|dentro de)\s+(\d+)\s*horas?", t)
+        if m:
+            minutes = max(1, int(m.group(1)) * 60)
+        else:
+            m = re.search(r"a las\s+(\d{1,2})(?::(\d{2}))?", t)
+            if m:
+                hour = int(m.group(1))
+                minute = int(m.group(2) or 0)
+                now = datetime.now()
+                when_today = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                if when_today <= now:
+                    when_today = when_today + timedelta(days=1)
+                minutes = max(1, int((when_today - now).total_seconds() // 60))
+
+    when = datetime.now() + timedelta(minutes=minutes)
+
+    body = raw
+    body = re.sub(
+        r"(pon(me)?|crea(r)?|agrega(r)?|programa(r)?)\s+(un\s+)?recordatorio\s*",
+        "",
+        body,
+        flags=re.I,
+    )
+    body = re.sub(
+        r"(recu[eé]rdame|av[ií]same)\s*(que\s*)?",
+        "",
+        body,
+        flags=re.I,
+    )
+    body = re.sub(
+        r"(dentro de|en)\s+\d+\s*(minutos?|mins?|horas?)",
+        "",
+        body,
+        flags=re.I,
+    )
+    body = re.sub(r"\ba las\s+\d{1,2}(?::\d{2})?\b", "", body, flags=re.I)
+    body = re.sub(r"\s+", " ", body).strip(" :-–—,.")
+    body = body or "Recordatorio"
+
+    return {
+        "text": body,
+        "minutes": minutes,
+        "at": when.isoformat(timespec="minutes"),
+    }
 
 
 def build_memory_blocks(user_message: str, intent: str, history: list, facts: list, docs: list):
@@ -791,6 +860,44 @@ class AikoAgent:
             MAIN_USER_ID = "user-123"
             lower_msg = user_message.lower()
 
+            # ---- Recordatorio: no pasar por el LLM ----
+            reminder = _parse_reminder(user_message)
+            if reminder:
+                when_dt = datetime.fromisoformat(reminder["at"])
+                when_txt = when_dt.strftime("%H:%M")
+                logger.info(f"⏰ Recordatorio interceptado: {reminder}")
+                reply = (
+                    f"Listo, Ale. Te aviso en {reminder['minutes']} min "
+                    f"(a las {when_txt}): {reminder['text']} ⏰"
+                )
+                try:
+                    await self.memory.save_message(
+                        user_id, conversation_id, "user", user_message
+                    )
+                    await self.memory.save_message(
+                        user_id, conversation_id, "assistant", reply
+                    )
+                except Exception as e:
+                    logger.warning(f"No se pudieron guardar mensajes locales: {e}")
+                try:
+                    from core.supabase_client import save_message as sb_save_message
+
+                    sb_save_message(conversation_id, user_id, "user", user_message)
+                    sb_save_message(conversation_id, user_id, "assistant", reply)
+                except Exception as e:
+                    logger.warning(f"Supabase save_message: {e}")
+
+                return {
+                    "success": True,
+                    "response": reply,
+                    "tool_calls": None,
+                    "metadata": {
+                        "analysis_level": analysis_level,
+                        "intent": "reminder",
+                        "reminder": reminder,
+                    },
+                }
+
             intent = detect_intent(user_message)
             intent_hint = intent_tool_hint(intent)
             logger.info(f"🎯 Intent detectado: {intent}")
@@ -801,7 +908,11 @@ class AikoAgent:
 
             self._active_tools = self._tools_for_intent(intent)
 
-            if is_simple_greeting(user_message) or len(user_message.strip()) < 40:
+            is_short_chat = (
+                is_simple_greeting(user_message) or len(user_message.strip()) < 40
+            ) and not _is_reminder_message(user_message)
+
+            if is_short_chat:
                 self._active_tools = []
                 logger.info("🔒 Tools desactivadas (saludo / mensaje corto)")
 
@@ -878,7 +989,6 @@ class AikoAgent:
                     except Exception as e:
                         logger.error(f"Error en búsqueda: {e}")
 
-            # ---- Memoria persistente: Supabase primero ----
             history = []
             facts = []
             docs = []
@@ -943,12 +1053,14 @@ Reglas de memoria:
 - Contexto del mismo tema = solo si encaja con ESTA pregunta.
 - Al crear PDF/documento: contenido nuevo de ESTA petición + estilo previo. No mezclar temas viejos.
 - No digas que no recuerdas si hay preferencias o contexto del mismo tema.
+- SÍ puedes crear recordatorios. Nunca digas que no puedes ni que use el móvil.
 """
 
-            if is_simple_greeting(user_message) or len(user_message.strip()) < 40:
+            if is_short_chat:
                 system_prompt = f"""Eres Aiko, una compañera AI amable y cercana.
 Hoy es {current_date}.
 Responde en español, breve y natural. No uses herramientas.
+Si te piden un recordatorio, confírmalo. Nunca digas que no puedes.
 
 Usuario: {user_message}"""
             else:
