@@ -121,8 +121,14 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
 
-    from voice.desktop import start_listener
+    from voice.desktop import ask_desktop_permission, start_listener
 
+    app.state.allow_chat_youtube = (
+        settings.HOST in {"127.0.0.1", "::1", "localhost"}
+        and ask_desktop_permission(
+            "¿Permitir que el chat local de Aiko abra videos de YouTube en el navegador?"
+        )
+    )
     listener = start_listener()
     try:
         uvicorn.run(

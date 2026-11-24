@@ -15,6 +15,7 @@ from xml.etree import ElementTree
 
 DESKTOP_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Aiko"
 GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+AQUINO_CHANNEL_ID = "UCKuufKpyTISGU1TGj9n0q2A"
 AQUINO_VIDEOS = "https://www.youtube.com/@aquino_/videos"
 SHORTCUTS = {
     "valorant": "Valorant",
@@ -67,7 +68,7 @@ def read_settings():
 
 
 def latest_aquino_video(settings):
-    channel_id = settings.get("aquino_channel_id", "")
+    channel_id = settings.get("aquino_channel_id", AQUINO_CHANNEL_ID)
     if not isinstance(channel_id, str) or not re.fullmatch(r"UC[A-Za-z0-9_-]{22}", channel_id):
         raise ValueError("Configura aquino_channel_id en settings.json.")
     feed = "https://www.youtube.com/feeds/videos.xml?" + urlencode({"channel_id": channel_id})
@@ -220,20 +221,24 @@ def run(allow_apps, allow_gmail):
     listen(model_path, process)
 
 
-def start_listener():
+def ask_desktop_permission(question):
     if sys.platform != "win32" or not sys.stdin.isatty():
-        return None
-
-    def ask(question):
+        return False
+    try:
         return normalize(input(question + " [s/N] ")) in ("s", "si")
+    except EOFError:
+        return False
+
+
+def start_listener():
 
     try:
-        if not ask("¿Permitir que Aiko escuche el micrófono localmente?"):
+        if not ask_desktop_permission("¿Permitir que Aiko escuche el micrófono localmente?"):
             return None
         args = [sys.executable, "-m", "voice.desktop"]
-        if ask("¿Permitir que Aiko abra aplicaciones y páginas por voz?"):
+        if ask_desktop_permission("¿Permitir que Aiko abra aplicaciones y páginas por voz?"):
             args.append("--apps")
-        if ask("¿Permitir que Aiko consulte Gmail por voz?"):
+        if ask_desktop_permission("¿Permitir que Aiko consulte Gmail por voz?"):
             args.append("--gmail")
         return subprocess.Popen(
             args,

@@ -833,11 +833,23 @@ class AikoAgent:
             MAIN_USER_ID = settings.AUTH_USER_ID
             lower_msg = user_message.lower()
 
-            from voice.desktop import AQUINO_VIDEOS, latest_aquino_video, parse_command, read_settings
+            from voice.desktop import AQUINO_VIDEOS, latest_aquino_video, normalize, parse_command, read_settings
 
-            desktop_command = parse_command(user_message)
+            youtube_requested = parse_command(user_message) == ("youtube", "")
+            if not youtube_requested and re.fullmatch(
+                r"(?:miralo(?: tu)?(?: entonces)? y )?(?:pon|abre|reproduce) "
+                r"(?:el )?ultimo(?: video)?(?: por favor)?",
+                normalize(user_message),
+            ):
+                previous = await self.memory.get_latest_assistant_reply(conversation_id, user_id)
+                youtube_requested = previous.startswith((
+                    "No pude verificar el último video. [Ver los videos del canal de Aquino]",
+                    "[Ver el video más reciente de Aquino]",
+                ))
+
+            video_url = ""
             reminder = _parse_reminder(user_message)
-            if desktop_command == ("youtube", ""):
+            if youtube_requested:
                 try:
                     video_url = await asyncio.to_thread(lambda: latest_aquino_video(read_settings()))
                 except (OSError, ValueError, SyntaxError):
@@ -858,7 +870,7 @@ class AikoAgent:
                 )
                 intent = "reminder"
 
-            if reminder or desktop_command == ("youtube", ""):
+            if reminder or youtube_requested:
                 try:
                     await self.memory.save_message(user_id, conversation_id, "user", user_message)
                     await self.memory.save_message(user_id, conversation_id, "assistant", reply)
@@ -880,6 +892,7 @@ class AikoAgent:
                         "analysis_level": analysis_level,
                         "intent": intent,
                         **({"reminder": reminder} if reminder else {}),
+                        **({"youtube_video_url": video_url} if video_url else {}),
                     },
                 }
 

@@ -3,6 +3,9 @@
 import logging
 import time
 import uuid
+import asyncio
+import re
+import webbrowser
 from pathlib import Path
 from typing import Optional
 
@@ -11,6 +14,7 @@ from fastapi import (
     Depends,
     File,
     HTTPException,
+    Request,
     UploadFile,
     WebSocket,
     WebSocketDisconnect,
@@ -83,6 +87,7 @@ def _response_metadata(result: dict, request: ChatRequest) -> dict:
 @router.post("/message", response_model=ChatResponse)
 async def send_message(
     request: ChatRequest,
+    http_request: Request,
     authenticated_user_id: str = Depends(verify_api_key),
 ):
     """Send a message and get AI response."""
@@ -110,14 +115,30 @@ async def send_message(
                 metadata=_response_metadata(result, request),
             )
 
+        metadata = _response_metadata(result, request)
+        reply = result.get("response") or ""
+        video_url = metadata.get("youtube_video_url", "")
+        if (
+            getattr(http_request.app.state, "allow_chat_youtube", False)
+            and http_request.client is not None
+            and http_request.client.host in {"127.0.0.1", "::1"}
+            and re.fullmatch(r"https://www\.youtube\.com/watch\?v=[A-Za-z0-9_-]{11}", video_url)
+        ):
+            try:
+                opened = await asyncio.to_thread(webbrowser.open, video_url)
+            except (OSError, webbrowser.Error):
+                opened = False
+            if opened:
+                reply = "Envié el video a tu navegador. " + reply
+
         return ChatResponse(
             success=True,
             message_id=str(uuid.uuid4()),
-            response=result.get("response") or "",
+            response=reply,
             conversation_id=request.conversation_id,
             timestamp=int(time.time() * 1000),
             tool_calls=result.get("tool_calls"),
-            metadata=_response_metadata(result, request),
+            metadata=metadata,
         )
     except Exception as e:
         logger.error(f"Chat error: {e}", exc_info=True)

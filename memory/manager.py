@@ -310,6 +310,20 @@ class MemoryManager:
             logger.error(f"Error searching memory: {e}")
             return []
     
+    async def get_latest_assistant_reply(self, conversation_id: str, user_id: str) -> str:
+        """Read the last assistant reply for this user and conversation."""
+        if not self._db_connection:
+            return ""
+        row = self._db_connection.execute(
+            """
+            SELECT content FROM messages
+            WHERE conversation_id = ? AND user_id = ? AND role = 'assistant'
+            ORDER BY timestamp DESC, rowid DESC LIMIT 1
+            """,
+            (conversation_id, user_id),
+        ).fetchone()
+        return row[0] if row else ""
+
     async def get_conversation_history(
         self,
         conversation_id: str,
