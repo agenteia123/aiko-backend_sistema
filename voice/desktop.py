@@ -9,7 +9,7 @@ import sys
 import subprocess
 import time
 import unicodedata
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 from urllib.request import urlopen
 import webbrowser
 from xml.etree import ElementTree
@@ -58,9 +58,12 @@ def parse_command(text):
         return "youtube", ""
     if text in ("lee mis ultimos correos", "revisa mi correo", "revisa mis correos"):
         return "gmail", ""
-    text = re.sub(r"^(?:no )?(?:abre|inicia|ejecuta) (?:el )?", "", text) if re.match(
-        r"^(?:no )?(?:abre|inicia|ejecuta) ", text
-    ) else ""
+    command = re.fullmatch(
+        r"(?:(?:no )?solo tu |no )?(?:abre|inicia|ejecuta) (?:el |la )?(.+)", text
+    )
+    if command is None:
+        return None
+    text = re.sub(r" por favor$", "", command[1])
     text = re.sub(r"^juego ins?talado en mi pc llamado ", "", text)
     if re.fullmatch(r"(?:riot|riot client) y (?:abre|inicia) (?:el )?valoran[t]?", text):
         text = "valorant"
@@ -70,7 +73,13 @@ def parse_command(text):
         return "shortcut", SHORTCUTS[text]
     if text in ("google", "youtube"):
         return "web", text
-    return None
+    if not text or len(text) > 100:
+        return None
+    if re.search(r"\b(?:que hago|como lo|que puedo|desde cuando)\b", text):
+        return None
+    if normalize(command[0]).startswith("no abre ") and not command[1].startswith("juego "):
+        return None
+    return "shortcut", text
 
 
 def read_settings():
@@ -142,7 +151,7 @@ def list_mail(credentials):
 
 def installed_shortcuts(target):
     """Look in Windows' usual launcher and desktop shortcut folders."""
-    names = {target.casefold()}
+    names = {normalize(target)}
     if target == "Minecraft":
         names.add("minecraft launcher")
 
@@ -154,11 +163,11 @@ def installed_shortcuts(target):
         Path(os.environ[key]) / "Microsoft" / "Windows" / "Start Menu" / "Programs"
         for key in ("APPDATA", "PROGRAMDATA") if os.environ.get(key)
     ]
-    for folder in desktop_folders + menu_folders:
+    for folder in [DESKTOP_DIR / "accesos", *desktop_folders, *menu_folders]:
         matches = folder.rglob("*") if folder in menu_folders else folder.glob("*")
         for path in matches:
             if (
-                path.stem.casefold() in names
+                normalize(path.stem) in names
                 and path.suffix.casefold() in {".lnk", ".url"}
                 and path.is_file()
             ):
@@ -191,42 +200,123 @@ def riot_client_path():
     return default if default.is_file() else None
 
 
-def open_game_shortcut(target):
-    if target not in SHORTCUTS.values():
-        raise ValueError("Aplicación no disponible.")
-    shortcut = DESKTOP_DIR / "accesos" / (target + ".lnk")
-    attempts = []
-    if shortcut.is_file():
-        attempts.append((shortcut, ""))
+def _manifest_fields(path):
+    try:
+        content = path.read_text(encoding="utf-8-sig", errors="replace")
+    except OSError:
+        return {}
+    return dict(re.findall(r'^\s*"([^"]+)"\s+"((?:\\.|[^"\\])*)"', content, re.MULTILINE))
 
-    attempts.extend((path, "") for path in installed_shortcuts(target))
+
+def steam_launch_uris(target):
+    if sys.platform != "win32":
+        return
+    import winreg
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam") as key:
+            location, _ = winreg.QueryValueEx(key, "SteamPath")
+    except OSError:
+        return
+    root = Path(location)
+    library_list = root / "steamapps" / "libraryfolders.vdf"
+    libraries = [root]
+    try:
+        content = library_list.read_text(encoding="utf-8-sig", errors="replace")
+        libraries.extend(
+            Path(value.replace("\\\\", "\\"))
+            for value in re.findall(r'^\s*"path"\s+"([^"]+)"', content, re.MULTILINE)
+        )
+    except OSError:
+        pass
+    for library in dict.fromkeys(libraries):
+        for manifest in (library / "steamapps").glob("appmanifest_*.acf"):
+            fields = _manifest_fields(manifest)
+            app_id = fields.get("appid", "")
+            if (
+                normalize(fields.get("name", "")) == target
+                and re.fullmatch(r"[0-9]{1,10}", app_id)
+                and manifest.stem == "appmanifest_" + app_id
+            ):
+                yield "steam://rungameid/" + app_id
+
+
+def epic_launch_uris(target):
+    if not (program_data := os.environ.get("PROGRAMDATA")):
+        return
+    folder = Path(program_data) / "Epic" / "EpicGamesLauncher" / "Data" / "Manifests"
+    for manifest in folder.glob("*.item"):
+        try:
+            data = json.loads(manifest.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict) or data.get("bIsIncompleteInstall"):
+            continue
+        name = data.get("DisplayName")
+        if not isinstance(name, str) or normalize(name) != target:
+            continue
+        launch_id = [data.get(key) for key in ("CatalogNamespace", "CatalogItemId", "AppName")]
+        if all(isinstance(part, str) and re.fullmatch(r"[A-Za-z0-9_.-]+", part) for part in launch_id):
+            yield "com.epicgames.launcher://apps/" + quote(":".join(launch_id), safe="") + "?action=launch&silent=true"
+
+
+def start_menu_app_uris(target):
+    system_root = Path(os.environ.get("SystemRoot", r"C:\Windows"))
+    powershell = system_root / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    try:
+        result = subprocess.run(
+            [str(powershell), "-NoProfile", "-NonInteractive", "-Command",
+             "[Console]::OutputEncoding = [Text.Encoding]::UTF8; "
+             "Get-StartApps | Select-Object Name,AppID | ConvertTo-Json -Compress"],
+            capture_output=True, check=True, timeout=6, encoding="utf-8-sig", errors="replace",
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        apps = json.loads(result.stdout)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return
+    for app in apps if isinstance(apps, list) else [apps]:
+        if not isinstance(app, dict):
+            continue
+        name, app_id = app.get("Name"), app.get("AppID")
+        if isinstance(name, str) and normalize(name) == target and isinstance(app_id, str):
+            if re.fullmatch(r"[\w.{}!@+ -]{1,256}", app_id):
+                yield "shell:AppsFolder\\" + app_id
+
+
+def open_game_shortcut(target):
+    name = normalize(target)
+    if not name or len(name) > 100:
+        raise ValueError("Nombre de aplicación inválido.")
+    attempts = [(str(path), "") for path in installed_shortcuts(target)]
     if target in {"Valorant", "Riot Client"}:
         client = riot_client_path()
         if client is not None:
             arguments = "--launch-product=valorant --launch-patchline=live" if target == "Valorant" else ""
-            attempts.append((client, arguments))
+            attempts.append((str(client), arguments))
 
-    if not attempts:
-        raise FileNotFoundError(
-            f"No encontré {target} en Windows. Puedes usar el acceso directo {shortcut}."
-        )
+    def destinations():
+        yield from attempts
+        for source in (steam_launch_uris, epic_launch_uris, start_menu_app_uris):
+            yield from ((uri, "") for uri in source(name))
 
     failures = []
-    for path, arguments in dict.fromkeys(attempts):
+    for path, arguments in destinations():
         try:
-            if path.suffix.casefold() == ".exe":
-                os.startfile(str(path), "open", arguments, str(path.parent))
+            if path.casefold().endswith(".exe"):
+                os.startfile(path, "open", arguments, str(Path(path).parent))
             else:
-                os.startfile(str(path))
+                os.startfile(path)
         except OSError as exc:
             code = getattr(exc, "winerror", None) or exc.errno
             reason = f"error de Windows {code}" if code is not None else type(exc).__name__
             logger.warning("No se pudo abrir %s desde %s: %s", target, path, exc)
-            failures.append(f"{path.name}: {reason}")
+            failures.append(f"{Path(path).name}: {reason}")
         else:
             logger.info("Windows recibió la orden de abrir %s desde %s", target, path)
             return
 
+    if not failures:
+        raise FileNotFoundError(f"No encontré «{target}» en Inicio, el escritorio, Steam ni Epic.")
     raise OSError(f"Windows no pudo iniciar {target}. " + " · ".join(dict.fromkeys(failures)))
 
 

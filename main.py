@@ -132,7 +132,7 @@ if __name__ == "__main__":
     app.state.allow_chat_games = (
         settings.HOST in {"127.0.0.1", "::1", "localhost"}
         and ask_desktop_permission(
-            "¿Permitir que el chat local de Aiko abra juegos y launchers en Windows?"
+            "¿Permitir que el chat local de Aiko abra aplicaciones y juegos instalados en Windows?"
         )
     )
     listener = start_listener()

@@ -36,4 +36,4 @@ Si escribes esa orden de Aquino en el chat, recibirás un enlace al video verifi
 
 Para abrir juegos desde el chat local de Windows, acepta el permiso correspondiente al arrancar el backend. Escribe «abre Valorant», «abre Fortnite» o los nombres de las instancias de Minecraft definidos arriba. Se usan los mismos accesos directos que por voz.
 
-Puedes pedir «abre Riot Client», «abre Steam» y «abre Epic Games». Para Valorant, si no hay acceso directo, Aiko busca el cliente registrado por Riot y le pide abrir Valorant. Para Fortnite y Minecraft se usan los accesos de Windows que haya instalado el launcher. Las bibliotecas de juegos de Steam y Epic no se enumeran automáticamente.
+Puedes pedir «abre Riot Client», «abre Steam» y «abre Epic Games». Para Valorant, si no hay acceso directo, Aiko busca el cliente registrado por Riot y le pide abrir Valorant. Para Fortnite y Minecraft se usan los accesos de Windows que haya instalado el launcher. Por voz y en el chat local, Aiko también busca nombres en Inicio y en los registros locales de juegos instalados en Steam y Epic. Para programas portables, puedes agregar un acceso directo con el nombre que quieras usar.
