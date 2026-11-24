@@ -5,6 +5,7 @@ from pathlib import Path
 import queue
 import re
 import sys
+import subprocess
 import time
 import unicodedata
 from urllib.parse import urlencode
@@ -14,6 +15,7 @@ from xml.etree import ElementTree
 
 DESKTOP_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Aiko"
 GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+AQUINO_VIDEOS = "https://www.youtube.com/@aquino_/videos"
 SHORTCUTS = {
     "valorant": "Valorant",
     "valoran": "Valorant",
@@ -36,7 +38,13 @@ def normalize(text):
 
 def parse_command(text):
     text = normalize(text)
-    if re.fullmatch(r"(?:abre google y )?(?:pon(?:(?: en)? youtube)?|reproduce) (?:en youtube )?el video mas reciente de aquino", text):
+    text = re.sub(r"^aiko ", "", text)
+    if re.fullmatch(
+        r"(?:(?:abre|entra a) google y )?(?:abre youtube y )?"
+        r"(?:pon(?:(?: en)? youtube)?|reproduce|abre|busca) "
+        r"(?:en youtube )?el video mas (?:reciente|nuevo) de aquino",
+        text,
+    ):
         return "youtube", ""
     if text in ("lee mis ultimos correos", "revisa mi correo", "revisa mis correos"):
         return "gmail", ""
@@ -48,6 +56,14 @@ def parse_command(text):
     if text in ("google", "youtube"):
         return "web", text
     return None
+
+
+def read_settings():
+    path = DESKTOP_DIR / "settings.json"
+    settings = json.loads(path.read_text(encoding="utf-8-sig")) if path.exists() else {}
+    if not isinstance(settings, dict):
+        raise ValueError("settings.json debe contener un objeto JSON.")
+    return settings
 
 
 def latest_aquino_video(settings):
@@ -66,7 +82,7 @@ def latest_aquino_video(settings):
             videos.append((published, video_id))
     if not videos:
         raise ValueError("El canal no devolvió videos.")
-    webbrowser.open("https://www.youtube.com/watch?v=" + max(videos)[1])
+    return "https://www.youtube.com/watch?v=" + max(videos)[1]
 
 
 def connect_gmail():
@@ -129,7 +145,7 @@ def execute(command, allow_apps, gmail, settings):
             raise ValueError(f"Falta configurar el acceso directo {shortcut.name}.")
         os.startfile(shortcut)
     elif action == "youtube":
-        latest_aquino_video(settings)
+        webbrowser.open(latest_aquino_video(settings))
     elif action == "web":
         webbrowser.open("https://www." + target + ".com/")
 
@@ -180,10 +196,7 @@ def run(allow_apps, allow_gmail):
     if sys.platform != "win32":
         print("El asistente de escritorio requiere Windows.")
         return
-    settings_path = DESKTOP_DIR / "settings.json"
-    settings = json.loads(settings_path.read_text(encoding="utf-8-sig")) if settings_path.exists() else {}
-    if not isinstance(settings, dict):
-        raise ValueError("settings.json debe contener un objeto JSON.")
+    settings = read_settings()
     model_path = DESKTOP_DIR / "modelo-es"
     if not model_path.is_dir():
         raise ValueError(f"Falta el modelo de voz en {model_path}.")
@@ -205,6 +218,31 @@ def run(allow_apps, allow_gmail):
             print(f"No se completó la orden ({type(exc).__name__}).", flush=True)
 
     listen(model_path, process)
+
+
+def start_listener():
+    if sys.platform != "win32" or not sys.stdin.isatty():
+        return None
+
+    def ask(question):
+        return normalize(input(question + " [s/N] ")) in ("s", "si")
+
+    try:
+        if not ask("¿Permitir que Aiko escuche el micrófono localmente?"):
+            return None
+        args = [sys.executable, "-m", "voice.desktop"]
+        if ask("¿Permitir que Aiko abra aplicaciones y páginas por voz?"):
+            args.append("--apps")
+        if ask("¿Permitir que Aiko consulte Gmail por voz?"):
+            args.append("--gmail")
+        return subprocess.Popen(
+            args,
+            cwd=Path(__file__).resolve().parents[1],
+            creationflags=subprocess.CREATE_NEW_CONSOLE,
+        )
+    except (EOFError, OSError) as exc:
+        print(f"Escucha desactivada ({type(exc).__name__}).")
+        return None
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 # Aiko por voz en Windows
 
-Arranca con `start_backend.bat`. En cada inicio puedes habilitar el micrófono local y, por separado, la apertura de apps y la consulta de Gmail. Aunque rechaces el micrófono, el backend normal inicia. Si lo habilitas, cierra la consola de escucha o presiona Ctrl+C para detenerla.
+Arranca desde una terminal interactiva de Windows con `pymanager exec -3.11 main.py` o `start_backend.bat`. En cada inicio puedes habilitar el micrófono local y, por separado, la apertura de apps y la consulta de Gmail. Aunque rechaces el micrófono, el backend normal inicia. Si lo habilitas, cierra la consola de escucha o presiona Ctrl+C para detenerla. El arranque ASGI (por ejemplo, `uvicorn main:app`) no abre el micrófono.
 
 ## Preparación local
 
@@ -31,3 +31,5 @@ Para las órdenes de mundo, configura un acceso que ya sepa iniciar el mundo con
 Habilita Gmail API en tu proyecto de Google Cloud y descarga el [cliente OAuth de escritorio](https://developers.google.com/workspace/gmail/api/quickstart/python?hl=es-419) como `%LOCALAPPDATA%\Aiko\gmail-client.json`. Si la app OAuth está en pruebas, agrega tu cuenta como usuario de prueba.
 
 Al autorizar Gmail en el inicio, el navegador permite aprobar el acceso de solo lectura. «Aiko, revisa mi correo» muestra en la consola hasta cinco asuntos de la bandeja de entrada. El cliente y el token quedan fuera del repositorio, en la carpeta local de Aiko. Para quitar el acceso, revócalo en tu cuenta de Google y elimina `gmail-token.json`.
+
+Si escribes esa orden de Aquino en el chat, recibirás un enlace al video verificado o a la pestaña Videos del canal si falta la configuración o falla el feed. El chat no abre aplicaciones de la PC desde el servidor.

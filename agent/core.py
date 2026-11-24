@@ -833,8 +833,22 @@ class AikoAgent:
             MAIN_USER_ID = settings.AUTH_USER_ID
             lower_msg = user_message.lower()
 
+            from voice.desktop import AQUINO_VIDEOS, latest_aquino_video, parse_command, read_settings
+
+            desktop_command = parse_command(user_message)
             reminder = _parse_reminder(user_message)
-            if reminder:
+            if desktop_command == ("youtube", ""):
+                try:
+                    video_url = await asyncio.to_thread(lambda: latest_aquino_video(read_settings()))
+                except (OSError, ValueError, SyntaxError):
+                    reply = (
+                        "No pude verificar el último video. "
+                        f"[Ver los videos del canal de Aquino]({AQUINO_VIDEOS})."
+                    )
+                else:
+                    reply = f"[Ver el video más reciente de Aquino]({video_url})."
+                intent = "youtube"
+            elif reminder:
                 when_dt = datetime.fromisoformat(reminder["at"])
                 when_txt = when_dt.astimezone().strftime("%H:%M")
                 logger.info(f"⏰ Recordatorio interceptado: {reminder}")
@@ -842,6 +856,9 @@ class AikoAgent:
                     f"Listo, Ale. Te aviso en {reminder['minutes']} min "
                     f"(a las {when_txt}): {reminder['text']} ⏰"
                 )
+                intent = "reminder"
+
+            if reminder or desktop_command == ("youtube", ""):
                 try:
                     await self.memory.save_message(user_id, conversation_id, "user", user_message)
                     await self.memory.save_message(user_id, conversation_id, "assistant", reply)
@@ -861,8 +878,8 @@ class AikoAgent:
                     "tool_calls": None,
                     "metadata": {
                         "analysis_level": analysis_level,
-                        "intent": "reminder",
-                        "reminder": reminder,
+                        "intent": intent,
+                        **({"reminder": reminder} if reminder else {}),
                     },
                 }
 

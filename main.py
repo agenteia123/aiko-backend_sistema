@@ -121,10 +121,17 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(
-        "main:app",
-        host=settings.HOST,
-        port=settings.PORT,
-        reload=False,
-        log_level=settings.LOG_LEVEL.lower(),
-    )
+    from voice.desktop import start_listener
+
+    listener = start_listener()
+    try:
+        uvicorn.run(
+            app,
+            host=settings.HOST,
+            port=settings.PORT,
+            reload=False,
+            log_level=settings.LOG_LEVEL.lower(),
+        )
+    finally:
+        if listener is not None and listener.poll() is None:
+            listener.terminate()
