@@ -835,7 +835,9 @@ class AikoAgent:
 
             from voice.desktop import AQUINO_VIDEOS, latest_aquino_video, normalize, parse_command, read_settings
 
-            youtube_requested = parse_command(user_message) == ("youtube", "")
+            desktop_command = parse_command(user_message)
+            youtube_requested = desktop_command == ("youtube", "")
+            game = desktop_command[1] if desktop_command and desktop_command[0] == "shortcut" else ""
             if not youtube_requested and re.fullmatch(
                 r"(?:miralo(?: tu)?(?: entonces)? y )?(?:pon|abre|reproduce) "
                 r"(?:el )?ultimo(?: video)?(?: por favor)?",
@@ -860,6 +862,9 @@ class AikoAgent:
                 else:
                     reply = f"[Ver el video más reciente de Aquino]({video_url})."
                 intent = "youtube"
+            elif game:
+                reply = f"Orden de abrir {game} desde el acceso directo de Windows."
+                intent = "desktop_game"
             elif reminder:
                 when_dt = datetime.fromisoformat(reminder["at"])
                 when_txt = when_dt.astimezone().strftime("%H:%M")
@@ -870,7 +875,7 @@ class AikoAgent:
                 )
                 intent = "reminder"
 
-            if reminder or youtube_requested:
+            if reminder or youtube_requested or game:
                 try:
                     await self.memory.save_message(user_id, conversation_id, "user", user_message)
                     await self.memory.save_message(user_id, conversation_id, "assistant", reply)
@@ -891,8 +896,9 @@ class AikoAgent:
                     "metadata": {
                         "analysis_level": analysis_level,
                         "intent": intent,
-                        **({"reminder": reminder} if reminder else {}),
+                        **({"reminder": reminder} if intent == "reminder" else {}),
                         **({"youtube_video_url": video_url} if video_url else {}),
+                        **({"desktop_game": game} if game else {}),
                     },
                 }
 

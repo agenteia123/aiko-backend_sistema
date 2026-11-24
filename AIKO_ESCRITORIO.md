@@ -33,3 +33,5 @@ Habilita Gmail API en tu proyecto de Google Cloud y descarga el [cliente OAuth d
 Al autorizar Gmail en el inicio, el navegador permite aprobar el acceso de solo lectura. «Aiko, revisa mi correo» muestra en la consola hasta cinco asuntos de la bandeja de entrada. El cliente y el token quedan fuera del repositorio, en la carpeta local de Aiko. Para quitar el acceso, revócalo en tu cuenta de Google y elimina `gmail-token.json`.
 
 Si escribes esa orden de Aquino en el chat, recibirás un enlace al video verificado o a la pestaña Videos del canal si falta la configuración o falla el feed. Para abrir automáticamente el video verificado al enviarlo por el chat local, acepta el permiso de YouTube en la terminal al iniciar el backend en Windows. Esta opción requiere que el backend esté enlazado a loopback y se recibe solo desde loopback. La reproducción automática depende del navegador.
+
+Para abrir juegos desde el chat local de Windows, acepta el permiso correspondiente al arrancar el backend. Escribe «abre Valorant», «abre Fortnite» o los nombres de las instancias de Minecraft definidos arriba. Se usan los mismos accesos directos que por voz.

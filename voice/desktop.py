@@ -49,7 +49,10 @@ def parse_command(text):
         return "youtube", ""
     if text in ("lee mis ultimos correos", "revisa mi correo", "revisa mis correos"):
         return "gmail", ""
-    text = re.sub(r"^abre (?:el )?", "", text) if text.startswith("abre ") else ""
+    text = re.sub(r"^(?:no )?(?:abre|inicia|ejecuta) (?:el )?", "", text) if re.match(
+        r"^(?:no )?(?:abre|inicia|ejecuta) ", text
+    ) else ""
+    text = re.sub(r"^juego ins?talado en mi pc llamado ", "", text)
     text = re.sub(r"^minecraft (?:el )?paquete de mods (?:de )?", "minecraft ", text)
     text = re.sub(r" y (?:inicia|abre) el primer mundo(?: que (?:esta|este) (?:hay|ahi))?$", " primer mundo", text)
     if text in SHORTCUTS:
@@ -126,6 +129,15 @@ def list_mail(credentials):
             print(" - " + "".join(char for char in subject if char.isprintable()), flush=True)
 
 
+def open_game_shortcut(target):
+    if target not in SHORTCUTS.values():
+        raise ValueError("Juego no disponible.")
+    shortcut = DESKTOP_DIR / "accesos" / (target + ".lnk")
+    if not shortcut.is_file():
+        raise FileNotFoundError(f"Falta el acceso directo {shortcut}.")
+    os.startfile(shortcut)
+
+
 def execute(command, allow_apps, gmail, settings):
     if command is None:
         print("Orden no disponible.", flush=True)
@@ -141,10 +153,7 @@ def execute(command, allow_apps, gmail, settings):
         print("Apertura de aplicaciones desactivada.", flush=True)
         return
     if action == "shortcut":
-        shortcut = DESKTOP_DIR / "accesos" / (target + ".lnk")
-        if not shortcut.is_file():
-            raise ValueError(f"Falta configurar el acceso directo {shortcut.name}.")
-        os.startfile(shortcut)
+        open_game_shortcut(target)
     elif action == "youtube":
         webbrowser.open(latest_aquino_video(settings))
     elif action == "web":
@@ -213,7 +222,7 @@ def run(allow_apps, allow_gmail):
     def process(command):
         try:
             execute(command, allow_apps, gmail, settings)
-        except ValueError as exc:
+        except (ValueError, FileNotFoundError) as exc:
             print(str(exc), flush=True)
         except Exception as exc:
             print(f"No se completó la orden ({type(exc).__name__}).", flush=True)

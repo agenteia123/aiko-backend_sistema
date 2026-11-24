@@ -26,6 +26,7 @@ from memory.manager import MemoryManager
 from api.auth import verify_api_key
 from api.auth import decode_access_token
 from config.settings import settings
+from voice.desktop import open_game_shortcut
 
 
 logger = logging.getLogger(__name__)
@@ -118,10 +119,27 @@ async def send_message(
         metadata = _response_metadata(result, request)
         reply = result.get("response") or ""
         video_url = metadata.get("youtube_video_url", "")
-        if (
-            getattr(http_request.app.state, "allow_chat_youtube", False)
-            and http_request.client is not None
+        local_request = (
+            http_request.client is not None
             and http_request.client.host in {"127.0.0.1", "::1"}
+        )
+        game = metadata.get("desktop_game")
+        if game:
+            if not local_request or not getattr(http_request.app.state, "allow_chat_games", False):
+                reply = "La apertura de juegos por chat requiere el permiso de inicio del backend local en Windows."
+            else:
+                try:
+                    await asyncio.to_thread(open_game_shortcut, game)
+                except FileNotFoundError as exc:
+                    reply = str(exc)
+                except (OSError, ValueError):
+                    reply = f"Windows no pudo abrir el acceso directo de {game}."
+                else:
+                    reply = f"Envié a Windows la orden de abrir {game}."
+
+        if (
+            local_request
+            and getattr(http_request.app.state, "allow_chat_youtube", False)
             and re.fullmatch(r"https://www\.youtube\.com/watch\?v=[A-Za-z0-9_-]{11}", video_url)
         ):
             try:

@@ -129,6 +129,12 @@ if __name__ == "__main__":
             "¿Permitir que el chat local de Aiko abra videos de YouTube en el navegador?"
         )
     )
+    app.state.allow_chat_games = (
+        settings.HOST in {"127.0.0.1", "::1", "localhost"}
+        and ask_desktop_permission(
+            "¿Permitir que el chat local de Aiko abra juegos configurados en Windows?"
+        )
+    )
     listener = start_listener()
     try:
         uvicorn.run(
