@@ -126,7 +126,7 @@ if __name__ == "__main__":
     app.state.allow_chat_youtube = (
         settings.HOST in {"127.0.0.1", "::1", "localhost"}
         and ask_desktop_permission(
-            "¿Permitir que el chat local de Aiko abra videos de YouTube en el navegador?"
+            "¿Permitir que el chat local de Aiko abra Google y YouTube en el navegador?"
         )
     )
     app.state.allow_chat_games = (

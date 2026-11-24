@@ -833,10 +833,11 @@ class AikoAgent:
             MAIN_USER_ID = settings.AUTH_USER_ID
             lower_msg = user_message.lower()
 
-            from voice.desktop import AQUINO_VIDEOS, latest_aquino_video, normalize, parse_command, read_settings
+            from voice.desktop import AQUINO_VIDEOS, find_youtube_video, latest_aquino_video, normalize, parse_command, read_settings, youtube_search
 
             desktop_command = parse_command(user_message)
             youtube_requested = desktop_command == ("youtube", "")
+            web = desktop_command if desktop_command and desktop_command[0] in {"web_url", "youtube_play"} else None
             game = desktop_command[1] if desktop_command and desktop_command[0] == "shortcut" else ""
             if not youtube_requested and re.fullmatch(
                 r"(?:miralo(?: tu)?(?: entonces)? y )?(?:pon|abre|reproduce) "
@@ -862,6 +863,22 @@ class AikoAgent:
                 else:
                     reply = f"[Ver el video más reciente de Aquino]({video_url})."
                 intent = "youtube"
+            elif web:
+                action, target = web
+                if action == "youtube_play":
+                    try:
+                        video_url = await asyncio.to_thread(find_youtube_video, target)
+                    except ImportError:
+                        video_url = None
+                    if video_url:
+                        reply = f"[Ver el primer resultado en YouTube]({video_url})."
+                    else:
+                        video_url = youtube_search(target)
+                        reply = f"No encontré un video reproducible directamente. [Ver resultados en YouTube]({video_url})."
+                else:
+                    video_url = target
+                    reply = f"[Abrir en el navegador]({video_url})."
+                intent = "web"
             elif game:
                 reply = f"Orden de abrir {game} en Windows."
                 intent = "desktop_game"
@@ -875,7 +892,7 @@ class AikoAgent:
                 )
                 intent = "reminder"
 
-            if reminder or youtube_requested or game:
+            if reminder or youtube_requested or web or game:
                 try:
                     await self.memory.save_message(user_id, conversation_id, "user", user_message)
                     await self.memory.save_message(user_id, conversation_id, "assistant", reply)

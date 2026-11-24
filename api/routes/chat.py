@@ -4,8 +4,8 @@ import logging
 import time
 import uuid
 import asyncio
-import re
 import webbrowser
+from urllib.parse import urlsplit
 from pathlib import Path
 from typing import Optional
 
@@ -26,7 +26,7 @@ from memory.manager import MemoryManager
 from api.auth import verify_api_key
 from api.auth import decode_access_token
 from config.settings import settings
-from voice.desktop import open_game_shortcut
+from voice.desktop import open_game_shortcut, open_web_url
 
 
 logger = logging.getLogger(__name__)
@@ -135,17 +135,19 @@ async def send_message(
                 else:
                     reply = f"Envié a Windows la orden de abrir {game}."
 
+        destination = urlsplit(video_url)
         if (
             local_request
             and getattr(http_request.app.state, "allow_chat_youtube", False)
-            and re.fullmatch(r"https://www\.youtube\.com/watch\?v=[A-Za-z0-9_-]{11}", video_url)
+            and destination.scheme == "https"
+            and destination.netloc in {"www.youtube.com", "www.google.com"}
         ):
             try:
-                opened = await asyncio.to_thread(webbrowser.open, video_url)
+                opened = await asyncio.to_thread(open_web_url, video_url)
             except (OSError, webbrowser.Error):
                 opened = False
             if opened:
-                reply = "Envié el video a tu navegador. " + reply
+                reply = "Envié el enlace a tu navegador. " + reply
 
         return ChatResponse(
             success=True,

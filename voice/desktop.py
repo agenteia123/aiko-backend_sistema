@@ -47,6 +47,7 @@ def normalize(text):
 
 
 def parse_command(text):
+    text_original = text
     text = normalize(text)
     text = re.sub(r"^aiko ", "", text)
     if re.fullmatch(
@@ -56,6 +57,30 @@ def parse_command(text):
         text,
     ):
         return "youtube", ""
+    raw = re.sub(r"^(?:aiko[, ]+|por favor[, ]+)", "", text_original.strip(), flags=re.IGNORECASE)
+    channel = re.fullmatch(
+        r"(?:abre|entra a) (?:el )?canal (?:de )?(@[^\s]+|.+?)(?: en youtube)?(?: por favor)?",
+        raw, re.IGNORECASE,
+    )
+    if channel:
+        handle = channel[1]
+        if re.fullmatch(r"@[A-Za-z0-9_.-]{1,30}", handle):
+            return "web_url", "https://www.youtube.com/" + handle
+        return "web_url", youtube_search(handle + " canal oficial")
+    search = re.fullmatch(
+        r"(?:abre youtube y )?(?:busca(?:me)?|haz una busqueda de) (.+)", text
+    )
+    if search:
+        query = search[1]
+        if query.startswith("en youtube "):
+            return "web_url", youtube_search(query.removeprefix("en youtube "))
+        if query.endswith(" en youtube"):
+            return "web_url", youtube_search(query.removesuffix(" en youtube"))
+        query = query.removeprefix("en google ").removesuffix(" en google")
+        return "web_url", "https://www.google.com/search?" + urlencode({"q": query})
+    music = re.fullmatch(r"(?:pon(?:me)?|reproduce)(?: en youtube)? (.+)", text)
+    if music:
+        return "youtube_play", music[1].removesuffix(" en youtube").removesuffix(" por favor")
     if text in ("lee mis ultimos correos", "revisa mi correo", "revisa mis correos"):
         return "gmail", ""
     command = re.fullmatch(
@@ -72,7 +97,7 @@ def parse_command(text):
     if text in SHORTCUTS:
         return "shortcut", SHORTCUTS[text]
     if text in ("google", "youtube"):
-        return "web", text
+        return "web_url", "https://www." + text + ".com/"
     if not text or len(text) > 100:
         return None
     if re.search(r"\b(?:que hago|como lo|que puedo|desde cuando)\b", text):
@@ -80,6 +105,50 @@ def parse_command(text):
     if normalize(command[0]).startswith("no abre ") and not command[1].startswith("juego "):
         return None
     return "shortcut", text
+
+
+def youtube_search(query):
+    return "https://www.youtube.com/results?" + urlencode({"search_query": query})
+
+
+def find_youtube_video(query):
+    from yt_dlp import YoutubeDL
+    from yt_dlp.utils import DownloadError
+
+    try:
+        with YoutubeDL({
+            "quiet": True, "no_warnings": True, "extract_flat": True,
+            "socket_timeout": 5, "extractor_retries": 0, "retries": 0,
+        }) as youtube:
+            results = youtube.extract_info("ytsearch1:" + query, download=False)
+    except DownloadError:
+        return None
+    for entry in (results or {}).get("entries", []):
+        if entry and re.fullmatch(r"[A-Za-z0-9_-]{11}", entry.get("id") or ""):
+            return "https://www.youtube.com/watch?v=" + entry["id"]
+    return None
+
+
+def open_web_url(url):
+    if sys.platform == "win32":
+        import winreg
+
+        for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+            try:
+                with winreg.OpenKey(hive, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe") as key:
+                    path = Path(winreg.QueryValue(key, None))
+                if path.is_absolute() and path.is_file():
+                    subprocess.Popen([str(path), url])
+                    return True
+            except OSError:
+                continue
+        for key in ("LOCALAPPDATA", "PROGRAMFILES", "PROGRAMFILES(X86)"):
+            if location := os.environ.get(key):
+                chrome = Path(location) / "Google" / "Chrome" / "Application" / "chrome.exe"
+                if chrome.is_file():
+                    subprocess.Popen([str(chrome), url])
+                    return True
+    return webbrowser.open(url)
 
 
 def read_settings():
@@ -152,7 +221,7 @@ def list_mail(credentials):
 def installed_shortcuts(target):
     """Look in Windows' usual launcher and desktop shortcut folders."""
     names = {normalize(target)}
-    if target == "Minecraft":
+    if normalize(target) == "minecraft":
         names.add("minecraft launcher")
 
     desktop_folders = [Path.home() / "Desktop"]
@@ -300,7 +369,7 @@ def start_menu_app_uris(target):
         if not isinstance(app, dict):
             continue
         name, app_id = app.get("Name"), app.get("AppID")
-        if isinstance(name, str) and normalize(name) == target and isinstance(app_id, str):
+        if isinstance(name, str) and (normalize(name) == target or (target == "minecraft" and normalize(name) == "minecraft launcher")) and isinstance(app_id, str):
             if re.fullmatch(r"[\w.{}!@+ -]{1,256}", app_id):
                 yield "shell:AppsFolder\\" + app_id
 
@@ -367,9 +436,15 @@ def execute(command, allow_apps, gmail, settings):
     if action == "shortcut":
         open_game_shortcut(target)
     elif action == "youtube":
-        webbrowser.open(latest_aquino_video(settings))
-    elif action == "web":
-        webbrowser.open("https://www." + target + ".com/")
+        open_web_url(latest_aquino_video(settings))
+    elif action == "web_url":
+        open_web_url(target)
+    elif action == "youtube_play":
+        try:
+            video = find_youtube_video(target)
+        except ImportError:
+            video = None
+        open_web_url(video or youtube_search(target))
 
 
 def listen(model_path, process):
