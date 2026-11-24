@@ -121,21 +121,24 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
 
-    from voice.desktop import ask_desktop_permission, start_listener
+    import sys
+    from voice.desktop import DesktopPermissions, start_listener
+
+    permissions = DesktopPermissions(reset="--reset-desktop-permissions" in sys.argv[1:])
 
     app.state.allow_chat_youtube = (
         settings.HOST in {"127.0.0.1", "::1", "localhost"}
-        and ask_desktop_permission(
-            "¿Permitir que el chat local de Aiko abra Google y YouTube en el navegador?"
+        and permissions.allow(
+            "chat_web", "¿Permitir que el chat local de Aiko abra Google y YouTube en el navegador?"
         )
     )
     app.state.allow_chat_games = (
         settings.HOST in {"127.0.0.1", "::1", "localhost"}
-        and ask_desktop_permission(
-            "¿Permitir que el chat local de Aiko abra aplicaciones y juegos instalados en Windows?"
+        and permissions.allow(
+            "chat_apps", "¿Permitir que el chat local de Aiko abra aplicaciones y juegos instalados en Windows?"
         )
     )
-    listener = start_listener()
+    listener = start_listener(permissions)
     try:
         uvicorn.run(
             app,

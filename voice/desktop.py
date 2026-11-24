@@ -1,4 +1,5 @@
 """Local, opt-in desktop commands. This module exposes no HTTP endpoints."""
+import hashlib
 import json
 import logging
 import os
@@ -7,6 +8,7 @@ import queue
 import re
 import sys
 import subprocess
+import tempfile
 import time
 import unicodedata
 from urllib.parse import quote, urlencode
@@ -498,44 +500,105 @@ def run(allow_apps, allow_gmail):
     if not model_path.is_dir():
         raise ValueError(f"Falta el modelo de voz en {model_path}.")
     gmail = None
-    if allow_gmail:
-        try:
-            gmail = connect_gmail()
-        except ValueError as exc:
-            print(f"Gmail desactivado. {exc}")
-        except Exception as exc:
-            print(f"Gmail desactivado. Error de autorización ({type(exc).__name__}).")
 
     def process(command):
+        nonlocal gmail
         try:
+            if command and command[0] == "gmail" and allow_gmail and gmail is None:
+                gmail = connect_gmail()
             execute(command, allow_apps, gmail, settings)
         except (ValueError, OSError) as exc:
             print(str(exc), flush=True)
         except Exception as exc:
             print(f"No se completó la orden ({type(exc).__name__}).", flush=True)
 
+
     listen(model_path, process)
 
 
-def ask_desktop_permission(question):
-    if sys.platform != "win32" or not sys.stdin.isatty():
-        return False
+class DesktopPermissions:
+    def __init__(self, reset=False):
+        self.path = DESKTOP_DIR / "permisos.json"
+        self.device = None
+        self.choices = {}
+        if sys.platform != "win32":
+            return
+
+        import winreg
+
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography",
+                                access=winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as key:
+                machine_guid, _ = winreg.QueryValueEx(key, "MachineGuid")
+            self.device = hashlib.sha256(machine_guid.encode("utf-8")).hexdigest()
+        except (OSError, AttributeError) as exc:
+            logger.warning("No se pudo identificar esta instalación de Windows: %s", exc)
+        if reset:
+            self.path.unlink(missing_ok=True)
+        if self.device:
+            try:
+                saved = json.loads(self.path.read_text(encoding="utf-8"))
+                if isinstance(saved, dict) and saved.get("device") == self.device:
+                    choices = saved.get("choices")
+                    if isinstance(choices, dict):
+                        self.choices = {key: value for key, value in choices.items() if type(value) is bool}
+            except FileNotFoundError:
+                pass
+            except (OSError, ValueError) as exc:
+                logger.warning("No se pudieron leer los permisos de Aiko: %s", exc)
+
+    def allow(self, key, question):
+        if sys.platform != "win32":
+            return False
+        if key in self.choices:
+            return self.choices[key]
+        if not sys.stdin.isatty():
+            return False
+        while True:
+            try:
+                answer = normalize(input(question + " [s/N] "))
+            except EOFError:
+                return False
+            if answer in ("s", "si", "n", "no", ""):
+                break
+        allowed = answer in ("s", "si")
+        self.choices[key] = allowed
+        if self.device:
+            try:
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                with tempfile.NamedTemporaryFile(
+                    mode="w", encoding="utf-8", dir=self.path.parent, delete=False
+                ) as stream:
+                    temporary = Path(stream.name)
+                    try:
+                        json.dump({"device": self.device, "choices": self.choices}, stream)
+                    except OSError:
+                        stream.close()
+                        temporary.unlink(missing_ok=True)
+                        raise
+                try:
+                    temporary.replace(self.path)
+                finally:
+                    temporary.unlink(missing_ok=True)
+            except OSError as exc:
+                logger.warning("No se pudieron guardar los permisos de Aiko: %s", exc)
+        return allowed
+
+
+def start_listener(permissions):
     try:
-        return normalize(input(question + " [s/N] ")) in ("s", "si")
-    except EOFError:
-        return False
-
-
-def start_listener():
-
-    try:
-        if not ask_desktop_permission("¿Permitir que Aiko escuche el micrófono localmente?"):
+        if not permissions.allow("microphone", "¿Permitir que Aiko escuche el micrófono localmente?"):
             return None
         args = [sys.executable, "-m", "voice.desktop"]
-        if ask_desktop_permission("¿Permitir que Aiko abra aplicaciones y páginas por voz?"):
+        if permissions.allow("voice_apps", "¿Permitir que Aiko abra aplicaciones y páginas por voz?"):
             args.append("--apps")
-        if ask_desktop_permission("¿Permitir que Aiko consulte Gmail por voz?"):
+        if permissions.allow("voice_gmail", "¿Permitir que Aiko consulte Gmail por voz?"):
             args.append("--gmail")
+        model_path = DESKTOP_DIR / "modelo-es"
+        if not model_path.is_dir():
+            print(f"Escucha desactivada. Falta el modelo de voz en {model_path}.", flush=True)
+            return None
+        print("Iniciando la escucha local de Aiko en una consola aparte. No necesitas abrir la página.", flush=True)
         return subprocess.Popen(
             args,
             cwd=Path(__file__).resolve().parents[1],

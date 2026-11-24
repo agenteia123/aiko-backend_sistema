@@ -1,6 +1,10 @@
 # Aiko por voz en Windows
 
-Arranca desde una terminal interactiva de Windows con `pymanager exec -3.11 main.py` o `start_backend.bat`. En cada inicio puedes habilitar el micrófono local y, por separado, la apertura de apps y la consulta de Gmail. Aunque rechaces el micrófono, el backend normal inicia. Si lo habilitas, cierra la consola de escucha o presiona Ctrl+C para detenerla. El arranque ASGI (por ejemplo, `uvicorn main:app`) no abre el micrófono.
+Arranca desde una terminal interactiva de Windows con `pymanager exec -3.11 main.py` o `start_backend.bat`. Aiko pregunta una vez por cada permiso y guarda tanto las respuestas afirmativas como las negativas para el usuario y la instalación de Windows actuales. En otra PC vuelve a preguntar.
+
+Para cambiar las decisiones, inicia con `pymanager exec -3.11 main.py --reset-desktop-permissions`. El permiso de Gmail de Aiko es independiente de la autorización de Google.
+
+Si autorizaste el micrófono y el modelo de voz está instalado, Aiko inicia la escucha en una consola separada al arrancar el backend. Puedes usarla con la página cerrada, incluso sin iniciar el frontend. Espera el mensaje «Micrófono activo» en esa consola. Cierra la consola de escucha o detén el backend para detenerla. El arranque ASGI (por ejemplo, `uvicorn main:app`) no inicia la escucha.
 
 ## Preparación local
 
@@ -30,7 +34,7 @@ Para las órdenes de mundo, configura un acceso que ya sepa iniciar el mundo con
 
 Habilita Gmail API en tu proyecto de Google Cloud y descarga el [cliente OAuth de escritorio](https://developers.google.com/workspace/gmail/api/quickstart/python?hl=es-419) como `%LOCALAPPDATA%\Aiko\gmail-client.json`. Si la app OAuth está en pruebas, agrega tu cuenta como usuario de prueba.
 
-Al autorizar Gmail en el inicio, el navegador permite aprobar el acceso de solo lectura. «Aiko, revisa mi correo» muestra en la consola hasta cinco asuntos de la bandeja de entrada. El cliente y el token quedan fuera del repositorio, en la carpeta local de Aiko. Para quitar el acceso, revócalo en tu cuenta de Google y elimina `gmail-token.json`.
+Tras permitir Gmail en Aiko, la primera orden de correo abre el navegador para aprobar el acceso de solo lectura si todavía falta la autorización de Google. «Aiko, revisa mi correo» muestra en la consola hasta cinco asuntos de la bandeja de entrada. El cliente y el token quedan fuera del repositorio, en la carpeta local de Aiko. Para quitar el acceso, revócalo en tu cuenta de Google y elimina `gmail-token.json`.
 
 Si escribes esa orden de Aquino en el chat, recibirás un enlace al video verificado o a la pestaña Videos del canal si falta la configuración o falla el feed. Para abrir automáticamente el video verificado al enviarlo por el chat local, acepta el permiso de YouTube en la terminal al iniciar el backend en Windows. Esta opción requiere que el backend esté enlazado a loopback y se recibe solo desde loopback. La reproducción automática depende del navegador.
 
