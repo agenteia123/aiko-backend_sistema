@@ -130,10 +130,8 @@ async def send_message(
             else:
                 try:
                     await asyncio.to_thread(open_game_shortcut, game)
-                except FileNotFoundError as exc:
+                except (OSError, ValueError) as exc:
                     reply = str(exc)
-                except (OSError, ValueError):
-                    reply = f"Windows no pudo iniciar {game}."
                 else:
                     reply = f"Envié a Windows la orden de abrir {game}."
 

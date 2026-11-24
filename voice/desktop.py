@@ -1,5 +1,6 @@
 """Local, opt-in desktop commands. This module exposes no HTTP endpoints."""
 import json
+import logging
 import os
 from pathlib import Path
 import queue
@@ -12,6 +13,8 @@ from urllib.parse import urlencode
 from urllib.request import urlopen
 import webbrowser
 from xml.etree import ElementTree
+
+logger = logging.getLogger(__name__)
 
 DESKTOP_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Aiko"
 GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
@@ -137,7 +140,7 @@ def list_mail(credentials):
             print(" - " + "".join(char for char in subject if char.isprintable()), flush=True)
 
 
-def installed_shortcut(target):
+def installed_shortcuts(target):
     """Look in Windows' usual launcher and desktop shortcut folders."""
     names = {target.casefold()}
     if target == "Minecraft":
@@ -159,8 +162,7 @@ def installed_shortcut(target):
                 and path.suffix.casefold() in {".lnk", ".url"}
                 and path.is_file()
             ):
-                return path
-    return None
+                yield path
 
 
 def riot_client_path():
@@ -193,27 +195,39 @@ def open_game_shortcut(target):
     if target not in SHORTCUTS.values():
         raise ValueError("Aplicación no disponible.")
     shortcut = DESKTOP_DIR / "accesos" / (target + ".lnk")
+    attempts = []
     if shortcut.is_file():
-        os.startfile(shortcut)
-        return
+        attempts.append((shortcut, ""))
 
-    existing = installed_shortcut(target)
-    if existing is not None:
-        os.startfile(existing)
-        return
-
+    attempts.extend((path, "") for path in installed_shortcuts(target))
     if target in {"Valorant", "Riot Client"}:
         client = riot_client_path()
         if client is not None:
-            args = [str(client)]
-            if target == "Valorant":
-                args.extend(["--launch-product=valorant", "--launch-patchline=live"])
-            subprocess.Popen(args, cwd=client.parent)
+            arguments = "--launch-product=valorant --launch-patchline=live" if target == "Valorant" else ""
+            attempts.append((client, arguments))
+
+    if not attempts:
+        raise FileNotFoundError(
+            f"No encontré {target} en Windows. Puedes usar el acceso directo {shortcut}."
+        )
+
+    failures = []
+    for path, arguments in dict.fromkeys(attempts):
+        try:
+            if path.suffix.casefold() == ".exe":
+                os.startfile(str(path), "open", arguments, str(path.parent))
+            else:
+                os.startfile(str(path))
+        except OSError as exc:
+            code = getattr(exc, "winerror", None) or exc.errno
+            reason = f"error de Windows {code}" if code is not None else type(exc).__name__
+            logger.warning("No se pudo abrir %s desde %s: %s", target, path, exc)
+            failures.append(f"{path.name}: {reason}")
+        else:
+            logger.info("Windows recibió la orden de abrir %s desde %s", target, path)
             return
 
-    raise FileNotFoundError(
-        f"No encontré {target} en Windows. Puedes usar el acceso directo {shortcut}."
-    )
+    raise OSError(f"Windows no pudo iniciar {target}. " + " · ".join(dict.fromkeys(failures)))
 
 
 def execute(command, allow_apps, gmail, settings):
@@ -300,7 +314,7 @@ def run(allow_apps, allow_gmail):
     def process(command):
         try:
             execute(command, allow_apps, gmail, settings)
-        except (ValueError, FileNotFoundError) as exc:
+        except (ValueError, OSError) as exc:
             print(str(exc), flush=True)
         except Exception as exc:
             print(f"No se completó la orden ({type(exc).__name__}).", flush=True)
