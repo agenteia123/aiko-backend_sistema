@@ -73,42 +73,21 @@ async def set_analysis_level(
 async def get_llm_providers(
     api_key: str = Depends(verify_api_key),
 ):
-    """Get available LLM providers."""
+    """List only providers explicitly allowed in the private backend config."""
+    allowed = {name.lower() for name in settings.ALLOWED_LLM_PROVIDERS}
+    provider_info = {
+        "ollama": {"name": "Ollama", "description": "Modelo local", "configured": True},
+        "groq": {"name": "Groq", "description": "API externa configurada por el usuario", "configured": bool(settings.GROQ_API_KEY)},
+        "google": {"name": "Google Gemini", "description": "API externa configurada por el usuario", "configured": bool(settings.GOOGLE_API_KEY)},
+    }
     return {
         "success": True,
         "current": settings.LLM_PROVIDER,
         "available": [
-            {
-                "name": "Ollama",
-                "value": "ollama",
-                "description": "Local/offline model",
-                "configured": True,
-            },
-            {
-                "name": "OpenAI",
-                "value": "openai",
-                "description": "GPT-4 and GPT-3.5",
-                "configured": bool(settings.OPENAI_API_KEY),
-            },
-            {
-                "name": "Anthropic Claude",
-                "value": "anthropic",
-                "description": "Claude models",
-                "configured": bool(settings.ANTHROPIC_API_KEY),
-            },
-            {
-                "name": "Google Gemini",
-                "value": "google",
-                "description": "Google AI models",
-                "configured": bool(settings.GOOGLE_API_KEY),
-            },
-            {
-                "name": "Grok",
-                "value": "grok",
-                "description": "X.AI Grok model",
-                "configured": bool(settings.GROK_API_KEY),
-            },
-        ]
+            {"value": key, **value}
+            for key, value in provider_info.items()
+            if key in allowed
+        ],
     }
 
 
@@ -118,10 +97,15 @@ async def set_llm_provider(
     api_key: str = Depends(verify_api_key),
 ):
     """Set LLM provider."""
-    valid_providers = ["ollama", "openai", "anthropic", "google", "grok"]
+    valid_providers = {name.lower() for name in settings.ALLOWED_LLM_PROVIDERS}
     
+    provider = provider.lower()
     if provider not in valid_providers:
-        raise HTTPException(status_code=400, detail="Invalid LLM provider")
+        raise HTTPException(status_code=403, detail="Proveedor no autorizado en el backend")
+    if provider == "groq" and not settings.GROQ_API_KEY:
+        raise HTTPException(status_code=409, detail="Configura GROQ_API_KEY en el backend")
+    if provider == "google" and not settings.GOOGLE_API_KEY:
+        raise HTTPException(status_code=409, detail="Configura GOOGLE_API_KEY en el backend")
     
     settings.LLM_PROVIDER = provider
     
@@ -129,7 +113,7 @@ async def set_llm_provider(
         "success": True,
         "llm_provider": provider,
         "message": f"LLM provider set to {provider}",
-        "note": "Backend restart may be required for changes to take effect",
+        "note": "El modelo de los nuevos mensajes usará este proveedor; no se hará fallback automático.",
     }
 
 

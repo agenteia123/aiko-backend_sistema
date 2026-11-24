@@ -20,6 +20,8 @@ from pydantic import BaseModel
 from agent.core import get_agent
 from memory.manager import MemoryManager
 from api.auth import verify_api_key
+from api.auth import decode_access_token
+from config.settings import settings
 
 
 logger = logging.getLogger(__name__)
@@ -42,9 +44,12 @@ class ChatRequest(BaseModel):
 
     message: str
     conversation_id: str
-    user_id: str
+    user_id: Optional[str] = None  # ignored; identity comes from the access token
     analysis_level: str = "balanced"
     attachments: Optional[list[dict]] = None
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    replace_message_id: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
@@ -60,10 +65,25 @@ class ChatResponse(BaseModel):
     metadata: Optional[dict] = None
 
 
+def _response_metadata(result: dict, request: ChatRequest) -> dict:
+    metadata = dict(result.get("metadata") or {})
+    provider = (request.provider or settings.LLM_PROVIDER).lower()
+    metadata["provider"] = provider
+    if request.model:
+        metadata["model"] = request.model
+    elif provider == "ollama":
+        metadata["model"] = settings.OLLAMA_MODEL
+    elif provider == "groq":
+        metadata["model"] = settings.GROQ_MODEL
+    elif provider == "google":
+        metadata["model"] = settings.GOOGLE_MODEL
+    return metadata
+
+
 @router.post("/message", response_model=ChatResponse)
 async def send_message(
     request: ChatRequest,
-    api_key: str = Depends(verify_api_key),
+    authenticated_user_id: str = Depends(verify_api_key),
 ):
     """Send a message and get AI response."""
     try:
@@ -71,10 +91,12 @@ async def send_message(
 
         result = await agent.process_message(
             user_message=request.message,
-            user_id=request.user_id,
+            user_id=authenticated_user_id,
             conversation_id=request.conversation_id,
             analysis_level=request.analysis_level,
             attachments=request.attachments,
+            provider=request.provider,
+            model=request.model,
         )
 
         if not result.get("success"):
@@ -85,7 +107,7 @@ async def send_message(
                 conversation_id=request.conversation_id,
                 timestamp=int(time.time() * 1000),
                 error=result.get("error", "Unknown error"),
-                metadata=result.get("metadata"),
+                metadata=_response_metadata(result, request),
             )
 
         return ChatResponse(
@@ -95,7 +117,7 @@ async def send_message(
             conversation_id=request.conversation_id,
             timestamp=int(time.time() * 1000),
             tool_calls=result.get("tool_calls"),
-            metadata=result.get("metadata"),
+            metadata=_response_metadata(result, request),
         )
     except Exception as e:
         logger.error(f"Chat error: {e}", exc_info=True)
@@ -153,8 +175,20 @@ async def websocket_endpoint(
     user_id: str,
     conversation_id: str,
 ):
-    """WebSocket endpoint for real-time chat."""
-    await websocket.accept()
+    """WebSocket endpoint authenticated through the negotiated subprotocol."""
+    protocols = [p.strip() for p in websocket.headers.get("sec-websocket-protocol", "").split(",")]
+    bearer_protocol = next((p for p in protocols if p.startswith("bearer.")), None)
+    if not bearer_protocol or "aiko-v1" not in protocols:
+        await websocket.close(code=1008)
+        return
+
+    try:
+        authenticated_user_id = decode_access_token(bearer_protocol.removeprefix("bearer."))
+    except HTTPException:
+        await websocket.close(code=1008)
+        return
+
+    await websocket.accept(subprotocol="aiko-v1")
 
     try:
         agent = await get_agent()
@@ -164,10 +198,12 @@ async def websocket_endpoint(
 
             result = await agent.process_message(
                 user_message=data.get("message"),
-                user_id=user_id,
+                user_id=authenticated_user_id,
                 conversation_id=conversation_id,
                 analysis_level=data.get("analysis_level", "balanced"),
                 attachments=data.get("attachments"),
+                provider=data.get("provider"),
+                model=data.get("model"),
             )
 
             await websocket.send_json(
@@ -195,13 +231,13 @@ async def send_message_with_file(
     message: str,
     file: UploadFile = File(None),
     analysis_level: str = "balanced",
-    api_key: str = Depends(verify_api_key),
+    authenticated_user_id: str = Depends(verify_api_key),
 ):
     """Send message with optional file attachment (legacy helper)."""
     try:
         attachment = None
         if file and file.filename:
-            upload_dir = Path("data/uploads")
+            upload_dir = Path(settings.UPLOAD_DIR)
             upload_dir.mkdir(parents=True, exist_ok=True)
 
             ext = Path(file.filename).suffix.lower() or ".bin"
@@ -224,7 +260,7 @@ async def send_message_with_file(
         agent = await get_agent()
         result = await agent.process_message(
             user_message=message,
-            user_id=user_id,
+            user_id=authenticated_user_id,
             conversation_id=conversation_id,
             analysis_level=analysis_level,
             attachments=[attachment] if attachment else None,

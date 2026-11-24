@@ -8,11 +8,18 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from api.auth import verify_api_key
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-UPLOAD_DIR = Path("data/uploads")
+_backend_root = Path(__file__).resolve().parents[2]
+_configured_upload_dir = Path(settings.UPLOAD_DIR).expanduser()
+UPLOAD_DIR = (
+    _configured_upload_dir.resolve()
+    if _configured_upload_dir.is_absolute()
+    else (_backend_root / _configured_upload_dir).resolve()
+)
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_EXT = {
@@ -50,20 +57,28 @@ async def upload_file(
     dest = UPLOAD_DIR / name
 
     try:
-        content = await file.read()
+        max_size = 20 * 1024 * 1024
+        chunks: list[bytes] = []
+        total_size = 0
+        while chunk := await file.read(1024 * 1024):
+            total_size += len(chunk)
+            if total_size > max_size:
+                raise HTTPException(
+                    status_code=413,
+                    detail="Archivo demasiado grande (máx 20MB)",
+                )
+            chunks.append(chunk)
+        content = b"".join(chunks)
         if not content:
             raise HTTPException(status_code=400, detail="Archivo vacío")
-        if len(content) > 20 * 1024 * 1024:
-            raise HTTPException(
-                status_code=400,
-                detail="Archivo demasiado grande (máx 20MB)",
-            )
         dest.write_bytes(content)
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error guardando upload: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        await file.close()
 
     resolved = str(dest.resolve())
     kind = "image" if ext in IMAGE_EXT else "file"
@@ -81,10 +96,13 @@ async def upload_file(
 
 
 @router.get("/uploads/{filename}")
-async def get_uploaded_file(filename: str):
-    """Sirve un archivo previamente subido."""
+async def get_uploaded_file(
+    filename: str,
+    authenticated_user_id: str = Depends(verify_api_key),
+):
+    """Serve a previously uploaded file only to an authenticated session."""
     safe = Path(filename).name
     path = UPLOAD_DIR / safe
-    if not path.exists() or not path.is_file():
+    if safe != filename or not path.exists() or not path.is_file():
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
     return FileResponse(path)

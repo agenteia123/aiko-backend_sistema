@@ -2,6 +2,9 @@
 
 import logging
 import re
+import asyncio
+import time
+from functools import wraps
 from typing import Annotated, TypedDict
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -29,6 +32,15 @@ from agent.intent import (
 
 
 logger = logging.getLogger(__name__)
+
+
+def _serialize_agent_request(method):
+    """Protect request-scoped agent state from concurrent chat calls."""
+    @wraps(method)
+    async def wrapped(self, *args, **kwargs):
+        async with self._request_lock:
+            return await method(self, *args, **kwargs)
+    return wrapped
 
 FILE_TOOL_NAMES = {
     "create_pdf",
@@ -484,7 +496,12 @@ def _extract_image_paths(attachments: list | None) -> list[str]:
         if path_obj.suffix.lower() not in IMAGE_EXTS:
             continue
         if path_obj.exists() and path_obj.is_file():
-            paths.append(str(path_obj.resolve()))
+            resolved = path_obj.resolve()
+            allowed_roots = [Path(root).resolve() for root in settings.ALLOWED_PATHS]
+            if any(resolved == root or root in resolved.parents for root in allowed_roots):
+                paths.append(str(resolved))
+            else:
+                logger.warning("Adjunto fuera de las carpetas autorizadas; ignorado")
         else:
             logger.warning(f"Attachment imagen no existe en disco: {path_obj}")
     seen = set()
@@ -506,8 +523,11 @@ class AgentState(TypedDict):
 
 class AikoAgent:
     def __init__(self):
+        self._request_lock = asyncio.Lock()
+        self._active_provider = settings.LLM_PROVIDER
+        self._active_model: str | None = None
         self.llm = LLMFactory.create_llm()
-        self.memory = MemoryManager()
+        self.memory = MemoryManager._instance or MemoryManager()
         self.tools = self._initialize_tools()
         self.tool_map = {tool.name: tool for tool in self.tools}
         self._active_tools = list(self.tools)
@@ -619,8 +639,15 @@ class AikoAgent:
                     response = await self.llm.ainvoke(state["messages"])
                 return {"messages": [response]}
             except Exception as e:
-                error_str = str(e).lower()
-                logger.warning(f"Modelo falló (intento {attempt + 1}): {e}")
+                # Some adapter errors have an empty str(e); include the type and repr.
+                error_str = f"{type(e).__name__}: {e!r}".lower()
+                logger.warning(
+                    "Modelo falló (intento %s, %s): %r",
+                    attempt + 1,
+                    type(e).__name__,
+                    e,
+                    exc_info=True,
+                )
                 is_api_error = any(
                     x in error_str
                     for x in [
@@ -656,13 +683,22 @@ class AikoAgent:
                     elif any(x in error_str for x in ["ollama", "11434"]):
                         LLMFactory.mark_failed("Ollama")
                     try:
-                        self.llm = LLMFactory.create_llm_for_task("complex")
+                        self.llm = LLMFactory.create_llm_for_task(
+                            "complex",
+                            provider=self._active_provider,
+                            model=self._active_model,
+                        )
                         continue
                     except Exception as e2:
                         logger.error(f"No se pudo crear otro modelo: {e2}")
                         break
                 else:
-                    logger.error(f"Agent node error: {e}")
+                    logger.error(
+                        "Agent node error (%s): %r",
+                        type(e).__name__,
+                        e,
+                        exc_info=True,
+                    )
                     return {
                         "messages": [
                             AIMessage(content="Lo siento, tuve un error procesando tu mensaje.")
@@ -761,7 +797,7 @@ class AikoAgent:
         )
 
     def _resolve_target_folder(self, lower_msg: str) -> str:
-        return str((Path("data") / "documents").resolve())
+        return str(Path(settings.DOCUMENTS_DIR).resolve())
 
     def _clean_search_query(self, user_message: str, lower_msg: str) -> str:
         trash = [
@@ -776,6 +812,7 @@ class AikoAgent:
             return "dieta saludable guía completa"
         return cq or user_message[:200]
 
+    @_serialize_agent_request
     async def process_message(
         self,
         user_message: str,
@@ -783,13 +820,17 @@ class AikoAgent:
         conversation_id: str,
         analysis_level: str = "balanced",
         attachments: list[dict] = None,
+        provider: str | None = None,
+        model: str | None = None,
     ) -> dict:
+        self._active_provider = (provider or settings.LLM_PROVIDER).lower()
+        self._active_model = model or None
         search_context = ""
         try:
-            logger.info(f"Processing message from {user_id}: {user_message[:50]}...")
+            logger.info("Processing chat message for authenticated user %s", user_id)
 
             current_date = datetime.now().strftime("%A, %d de %B de %Y")
-            MAIN_USER_ID = "user-123"
+            MAIN_USER_ID = settings.AUTH_USER_ID
             lower_msg = user_message.lower()
 
             reminder = _parse_reminder(user_message)
@@ -860,13 +901,19 @@ class AikoAgent:
 
             try:
                 self.llm = LLMFactory.create_llm_for_task(
-                    "complex" if use_complex else "normal"
+                    "complex" if use_complex else "normal",
+                    provider=self._active_provider,
+                    model=self._active_model,
                 )
                 if use_complex:
                     logger.info("Usando modelo complejo para esta pregunta")
             except Exception as e:
                 logger.warning(f"No se pudo elegir modelo: {e}")
-                self.llm = LLMFactory.create_llm()
+                self.llm = LLMFactory.create_llm_for_task(
+                    "normal",
+                    provider=self._active_provider,
+                    model=self._active_model,
+                )
 
             if user_id == MAIN_USER_ID:
                 affection = await self.memory.get_affection(user_id)
@@ -1013,7 +1060,14 @@ Usuario: {user_message}"""
                 "metadata": {"intent": intent, "images": list(self._turn_images)},
             }
 
+            agent_started = time.perf_counter()
             result_graph = await self.graph.ainvoke(initial_state)
+            logger.info(
+                "Flujo de IA completado en %.2f s (intent=%s, modelo=%s)",
+                time.perf_counter() - agent_started,
+                intent,
+                self._active_model or getattr(settings, "OLLAMA_MODEL", "seleccionado"),
+            )
             response_message = result_graph["messages"][-1]
             clean_response = _normalize_content(response_message.content)
 

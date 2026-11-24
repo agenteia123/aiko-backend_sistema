@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List
 
 from langchain_core.tools import Tool, StructuredTool
-from pydantic import BaseModel, Field
+from langchain_core.pydantic_v1 import BaseModel, Field
 
 
 logger = logging.getLogger(__name__)
@@ -32,26 +32,24 @@ class FilesystemTool:
     """Tool for safe filesystem operations."""
 
     def __init__(self, allowed_paths: List[str] | None = None):
-        self.allowed_paths = [Path(p).resolve() for p in (allowed_paths or ["./documents", "./uploads"])]
+        self.project_root = Path(__file__).resolve().parents[1]
+        self.allowed_paths = [
+            self._resolve_path(Path(p))
+            for p in (allowed_paths or ["./documents", "./uploads"])
+        ]
         logger.info(f"✅ Filesystem tool initialized with paths: {self.allowed_paths}")
+
+    def _resolve_path(self, path: Path) -> Path:
+        expanded = path.expanduser()
+        if not expanded.is_absolute():
+            expanded = self.project_root / expanded
+        return expanded.resolve()
 
     def _is_allowed(self, path: Path) -> bool:
         try:
-            resolved = path.resolve()
+            resolved = self._resolve_path(path)
             for allowed in self.allowed_paths:
-                if resolved == allowed or allowed in resolved.parents or resolved in allowed.parents:
-                    return True
-                # Permitir subcarpetas de Downloads, Documents, etc.
-                if str(resolved).lower().startswith(str(allowed).lower()):
-                    return True
-            # Permitir explícitamente Downloads y Documentos del usuario
-            allowed_roots = [
-                Path("C:/Users/User/Downloads").resolve(),
-                Path("C:/Users/User/Documents").resolve(),
-                Path("C:/Users/User/OneDrive/Documentos").resolve(),
-            ]
-            for root in allowed_roots:
-                if str(resolved).lower().startswith(str(root).lower()):
+                if resolved == allowed or allowed in resolved.parents:
                     return True
             return False
         except Exception:
@@ -63,13 +61,12 @@ class FilesystemTool:
             if not content or not str(content).strip():
                 return "❌ Error: el contenido del archivo está vacío. Debes generar el texto completo (mínimo 300 palabras) antes de guardar."
 
-            file_path = Path(path)
-            
-            # Crear carpeta padre si no existe
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-
+            file_path = self._resolve_path(Path(path))
             if not self._is_allowed(file_path):
                 return f"❌ Ruta no permitida: {path}"
+
+            # Validate the resolved destination before creating any directories.
+            file_path.parent.mkdir(parents=True, exist_ok=True)
 
             file_path.write_text(str(content), encoding="utf-8")
             logger.info(f"✅ File written: {file_path} ({len(content)} caracteres)")
@@ -81,7 +78,7 @@ class FilesystemTool:
     def create_folder(self, path: str) -> str:
         """Create a folder."""
         try:
-            folder_path = Path(path)
+            folder_path = self._resolve_path(Path(path))
             if not self._is_allowed(folder_path):
                 return f"❌ Ruta no permitida: {path}"
 
@@ -95,7 +92,7 @@ class FilesystemTool:
     def read_file(self, path: str) -> str:
         """Read a file."""
         try:
-            file_path = Path(path)
+            file_path = self._resolve_path(Path(path))
             if not self._is_allowed(file_path):
                 return f"❌ Ruta no permitida: {path}"
             if not file_path.exists():
@@ -108,7 +105,7 @@ class FilesystemTool:
     def list_files(self, path: str) -> str:
         """List files in a directory."""
         try:
-            folder_path = Path(path)
+            folder_path = self._resolve_path(Path(path))
             if not self._is_allowed(folder_path):
                 return f"❌ Ruta no permitida: {path}"
             if not folder_path.exists():

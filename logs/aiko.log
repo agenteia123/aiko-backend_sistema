@@ -1,0 +1,310 @@
+2026-11-12 12:19:51,474 - main - INFO - Starting Aiko backend
+2026-11-12 12:19:51,477 - core.services - INFO - Initializing services...
+2026-11-12 12:19:51,479 - core.services - INFO - 📁 Ensured directory: D:\aiko_ia_personal\aiko-backend\data\chroma
+2026-11-12 12:19:51,479 - core.services - INFO - 📁 Ensured directory: D:\aiko_ia_personal\aiko-backend\data
+2026-11-12 12:19:51,481 - core.services - INFO - 📁 Ensured directory: data
+2026-11-12 12:19:51,482 - core.services - INFO - 📁 Ensured directory: logs
+2026-11-12 12:19:51,546 - chromadb.telemetry.product.posthog - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2026-11-12 12:19:51,633 - chromadb.telemetry.product.posthog - ERROR - Failed to send telemetry event ClientStartEvent: capture() takes 1 positional argument but 3 were given
+2026-11-12 12:19:51,637 - chromadb.telemetry.product.posthog - ERROR - Failed to send telemetry event ClientCreateCollectionEvent: capture() takes 1 positional argument but 3 were given
+2026-11-12 12:19:51,638 - chromadb.telemetry.product.posthog - ERROR - Failed to send telemetry event ClientCreateCollectionEvent: capture() takes 1 positional argument but 3 were given
+2026-11-12 12:19:51,640 - chromadb.telemetry.product.posthog - ERROR - Failed to send telemetry event ClientCreateCollectionEvent: capture() takes 1 positional argument but 3 were given
+2026-11-12 12:19:51,640 - memory.manager - INFO - ✅ ChromaDB initialized (nueva configuración)
+2026-11-12 12:19:51,643 - memory.manager - INFO - ✅ SQLite database initialized
+2026-11-12 12:19:51,644 - core.llm_factory - INFO - Usando proveedor seleccionado: Ollama
+2026-11-12 12:19:51,809 - tools.search - INFO - ✅ DuckDuckGo available as fallback
+2026-11-12 12:19:51,810 - agent.core - WARNING - Search tool no disponible: 1 validation error for StructuredTool
+args_schema
+  subclass of BaseModel expected (type=type_error.subclass; expected_class=BaseModel)
+2026-11-12 12:19:51,813 - tools.filesystem - INFO - ✅ Filesystem tool initialized with paths: [WindowsPath('C:/Users/User/OneDrive/Documentos'), WindowsPath('C:/Users/User/Downloads'), WindowsPath('C:/Users/User/Documents'), WindowsPath('D:/aiko_ia_personal/aiko-backend/documents'), WindowsPath('D:/aiko_ia_personal/aiko-backend/uploads')]
+2026-11-12 12:19:51,814 - agent.core - WARNING - Filesystem tool no disponible: 1 validation error for StructuredTool
+args_schema
+  subclass of BaseModel expected (type=type_error.subclass; expected_class=BaseModel)
+2026-11-12 12:19:51,847 - tools.document_creator - INFO - ✅ DocumentCreatorTool initialized
+2026-11-12 12:19:51,848 - agent.core - WARNING - Document creator no disponible: 1 validation error for StructuredTool
+args_schema
+  subclass of BaseModel expected (type=type_error.subclass; expected_class=BaseModel)
+2026-11-12 12:19:52,160 - tools.image_analysis - WARNING - Vision model not available (no OpenAI API key)
+2026-11-12 12:19:52,165 - agent.core - INFO - ✅ Aiko Agent initialized with 4 tools
+2026-11-12 12:19:52,166 - core.services - INFO - ✅ All services initialized
+2026-11-12 12:19:52,166 - main - INFO - Aiko services initialized
+2026-11-12 12:34:09,852 - main - INFO - Shutting down Aiko backend
+2026-11-12 12:34:09,856 - core.services - INFO - Shutting down services...
+2026-11-12 12:34:09,859 - memory.manager - INFO - ✅ Memory manager shut down
+2026-11-12 12:34:09,861 - core.services - INFO - ✅ All services shut down
+2026-11-12 12:34:24,850 - main - INFO - Starting Aiko backend
+2026-11-12 12:34:24,856 - core.services - INFO - Initializing services...
+2026-11-12 12:34:24,857 - core.services - INFO - 📁 Ensured directory: D:\aiko_ia_personal\aiko-backend\data\chroma
+2026-11-12 12:34:24,859 - core.services - INFO - 📁 Ensured directory: D:\aiko_ia_personal\aiko-backend\data
+2026-11-12 12:34:24,860 - core.services - INFO - 📁 Ensured directory: data
+2026-11-12 12:34:24,861 - core.services - INFO - 📁 Ensured directory: logs
+2026-11-12 12:34:24,945 - chromadb.telemetry.product.posthog - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2026-11-12 12:34:25,034 - chromadb.telemetry.product.posthog - ERROR - Failed to send telemetry event ClientStartEvent: capture() takes 1 positional argument but 3 were given
+2026-11-12 12:34:25,035 - chromadb.telemetry.product.posthog - ERROR - Failed to send telemetry event ClientCreateCollectionEvent: capture() takes 1 positional argument but 3 were given
+2026-11-12 12:34:25,037 - chromadb.telemetry.product.posthog - ERROR - Failed to send telemetry event ClientCreateCollectionEvent: capture() takes 1 positional argument but 3 were given
+2026-11-12 12:34:25,038 - chromadb.telemetry.product.posthog - ERROR - Failed to send telemetry event ClientCreateCollectionEvent: capture() takes 1 positional argument but 3 were given
+2026-11-12 12:34:25,039 - memory.manager - INFO - ✅ ChromaDB initialized (nueva configuración)
+2026-11-12 12:34:25,040 - memory.manager - INFO - ✅ SQLite database initialized
+2026-11-12 12:34:25,041 - core.llm_factory - INFO - Usando proveedor seleccionado: Ollama
+2026-11-12 12:34:25,247 - tools.search - INFO - ✅ DuckDuckGo available as fallback
+2026-11-12 12:34:25,248 - agent.core - WARNING - Search tool no disponible: 1 validation error for StructuredTool
+args_schema
+  subclass of BaseModel expected (type=type_error.subclass; expected_class=BaseModel)
+2026-11-12 12:34:25,251 - tools.filesystem - INFO - ✅ Filesystem tool initialized with paths: [WindowsPath('C:/Users/User/OneDrive/Documentos'), WindowsPath('C:/Users/User/Downloads'), WindowsPath('C:/Users/User/Documents'), WindowsPath('D:/aiko_ia_personal/aiko-backend/documents'), WindowsPath('D:/aiko_ia_personal/aiko-backend/uploads')]
+2026-11-12 12:34:25,251 - agent.core - WARNING - Filesystem tool no disponible: 1 validation error for StructuredTool
+args_schema
+  subclass of BaseModel expected (type=type_error.subclass; expected_class=BaseModel)
+2026-11-12 12:34:25,264 - tools.document_creator - INFO - ✅ DocumentCreatorTool initialized
+2026-11-12 12:34:25,265 - agent.core - WARNING - Document creator no disponible: 1 validation error for StructuredTool
+args_schema
+  subclass of BaseModel expected (type=type_error.subclass; expected_class=BaseModel)
+2026-11-12 12:34:25,667 - tools.image_analysis - WARNING - Vision model not available (no OpenAI API key)
+2026-11-12 12:34:25,675 - agent.core - INFO - ✅ Aiko Agent initialized with 4 tools
+2026-11-12 12:34:25,675 - core.services - INFO - ✅ All services initialized
+2026-11-12 12:34:25,676 - main - INFO - Aiko services initialized
+2026-11-12 12:39:23,908 - main - INFO - Shutting down Aiko backend
+2026-11-12 12:39:23,911 - core.services - INFO - Shutting down services...
+2026-11-12 12:39:23,913 - memory.manager - INFO - ✅ Memory manager shut down
+2026-11-12 12:39:23,916 - core.services - INFO - ✅ All services shut down
+2026-11-12 12:39:37,939 - main - INFO - Starting Aiko backend
+2026-11-12 12:39:37,945 - core.services - INFO - Initializing services...
+2026-11-12 12:39:37,946 - core.services - INFO - 📁 Ensured directory: D:\aiko_ia_personal\aiko-backend\data\chroma
+2026-11-12 12:39:37,947 - core.services - INFO - 📁 Ensured directory: D:\aiko_ia_personal\aiko-backend\data
+2026-11-12 12:39:37,948 - core.services - INFO - 📁 Ensured directory: data
+2026-11-12 12:39:37,950 - core.services - INFO - 📁 Ensured directory: logs
+2026-11-12 12:39:38,016 - chromadb.telemetry.product.posthog - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2026-11-12 12:39:38,091 - chromadb.telemetry.product.posthog - ERROR - Failed to send telemetry event ClientStartEvent: capture() takes 1 positional argument but 3 were given
+2026-11-12 12:39:38,093 - chromadb.telemetry.product.posthog - ERROR - Failed to send telemetry event ClientCreateCollectionEvent: capture() takes 1 positional argument but 3 were given
+2026-11-12 12:39:38,094 - chromadb.telemetry.product.posthog - ERROR - Failed to send telemetry event ClientCreateCollectionEvent: capture() takes 1 positional argument but 3 were given
+2026-11-12 12:39:38,095 - chromadb.telemetry.product.posthog - ERROR - Failed to send telemetry event ClientCreateCollectionEvent: capture() takes 1 positional argument but 3 were given
+2026-11-12 12:39:38,096 - memory.manager - INFO - ✅ ChromaDB initialized (nueva configuración)
+2026-11-12 12:39:38,097 - memory.manager - INFO - ✅ SQLite database initialized
+2026-11-12 12:39:38,098 - core.llm_factory - INFO - Usando proveedor seleccionado: Ollama
+2026-11-12 12:39:38,253 - tools.search - INFO - ✅ DuckDuckGo available as fallback
+2026-11-12 12:39:38,254 - agent.core - WARNING - Search tool no disponible: 1 validation error for StructuredTool
+args_schema
+  subclass of BaseModel expected (type=type_error.subclass; expected_class=BaseModel)
+2026-11-12 12:39:38,256 - tools.filesystem - INFO - ✅ Filesystem tool initialized with paths: [WindowsPath('C:/Users/User/OneDrive/Documentos'), WindowsPath('C:/Users/User/Downloads'), WindowsPath('C:/Users/User/Documents'), WindowsPath('D:/aiko_ia_personal/aiko-backend/documents'), WindowsPath('D:/aiko_ia_personal/aiko-backend/uploads')]
+2026-11-12 12:39:38,257 - agent.core - WARNING - Filesystem tool no disponible: 1 validation error for StructuredTool
+args_schema
+  subclass of BaseModel expected (type=type_error.subclass; expected_class=BaseModel)
+2026-11-12 12:39:38,262 - tools.document_creator - INFO - ✅ DocumentCreatorTool initialized
+2026-11-12 12:39:38,263 - agent.core - WARNING - Document creator no disponible: 1 validation error for StructuredTool
+args_schema
+  subclass of BaseModel expected (type=type_error.subclass; expected_class=BaseModel)
+2026-11-12 12:39:38,564 - tools.image_analysis - WARNING - Vision model not available (no OpenAI API key)
+2026-11-12 12:39:38,569 - agent.core - INFO - ✅ Aiko Agent initialized with 4 tools
+2026-11-12 12:39:38,569 - core.services - INFO - ✅ All services initialized
+2026-11-12 12:39:38,570 - main - INFO - Aiko services initialized
+2026-11-12 12:40:11,823 - agent.core - INFO - Processing chat message for authenticated user user-123
+2026-11-12 12:40:11,824 - agent.core - INFO - 🎯 Intent detectado: chat
+2026-11-12 12:40:11,825 - agent.core - INFO - 🔧 Tools activas para intent=chat: ['read_pdf', 'read_docx', 'read_txt', 'analyze_image']
+2026-11-12 12:40:11,826 - agent.core - INFO - 🔒 Tools desactivadas (saludo / mensaje corto)
+2026-11-12 12:40:11,827 - core.llm_factory - INFO - Usando proveedor seleccionado: Ollama
+2026-11-12 12:40:11,853 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 12:40:11,854 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 12:40:11,854 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 12:40:11,856 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 12:41:13,925 - chromadb.telemetry.product.posthog - ERROR - Failed to send telemetry event CollectionAddEvent: capture() takes 1 positional argument but 3 were given
+2026-11-12 12:41:14,257 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 12:41:14,265 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 13:03:06,644 - agent.core - INFO - Processing chat message for authenticated user user-123
+2026-11-12 13:03:06,645 - agent.core - INFO - 🎯 Intent detectado: chat
+2026-11-12 13:03:06,646 - agent.core - INFO - 🔧 Tools activas para intent=chat: ['read_pdf', 'read_docx', 'read_txt', 'analyze_image']
+2026-11-12 13:03:06,647 - core.llm_factory - INFO - Usando proveedor seleccionado: Ollama
+2026-11-12 13:03:06,649 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 13:03:06,650 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 13:03:06,651 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 13:03:06,652 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 13:03:06,679 - agent.core - WARNING - Modelo falló (intento 1): 
+2026-11-12 13:03:06,679 - agent.core - ERROR - Agent node error: 
+2026-11-12 13:03:07,214 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 13:03:07,215 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 13:03:07,332 - chromadb.telemetry.product.posthog - ERROR - Failed to send telemetry event CollectionAddEvent: capture() takes 1 positional argument but 3 were given
+2026-11-12 13:03:07,333 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 13:03:25,400 - agent.core - INFO - Processing chat message for authenticated user user-123
+2026-11-12 13:03:25,401 - agent.core - INFO - 🎯 Intent detectado: chat
+2026-11-12 13:03:25,402 - agent.core - INFO - 🔧 Tools activas para intent=chat: ['read_pdf', 'read_docx', 'read_txt', 'analyze_image']
+2026-11-12 13:03:25,404 - agent.core - INFO - 🔒 Tools desactivadas (saludo / mensaje corto)
+2026-11-12 13:03:25,404 - core.llm_factory - INFO - Usando proveedor seleccionado: Ollama
+2026-11-12 13:03:25,406 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 13:03:25,407 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 13:03:25,407 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 13:03:25,408 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 13:03:31,607 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 13:03:31,610 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 13:48:23,194 - main - INFO - Shutting down Aiko backend
+2026-11-12 13:48:23,196 - core.services - INFO - Shutting down services...
+2026-11-12 13:48:23,198 - memory.manager - INFO - ✅ Memory manager shut down
+2026-11-12 13:48:23,199 - core.services - INFO - ✅ All services shut down
+2026-11-12 15:43:00,998 - main - INFO - Starting Aiko backend
+2026-11-12 15:43:01,000 - core.services - INFO - Initializing services...
+2026-11-12 15:43:01,000 - core.services - INFO - 📁 Ensured directory: D:\aiko_ia_personal\aiko-backend\data\chroma
+2026-11-12 15:43:01,001 - core.services - INFO - 📁 Ensured directory: D:\aiko_ia_personal\aiko-backend\data
+2026-11-12 15:43:01,001 - core.services - INFO - 📁 Ensured directory: data
+2026-11-12 15:43:01,001 - core.services - INFO - 📁 Ensured directory: logs
+2026-11-12 15:43:01,303 - chromadb.telemetry.product.posthog - ERROR - Failed to send telemetry event ClientStartEvent: capture() takes 1 positional argument but 3 were given
+2026-11-12 15:43:01,306 - chromadb.telemetry.product.posthog - ERROR - Failed to send telemetry event ClientCreateCollectionEvent: capture() takes 1 positional argument but 3 were given
+2026-11-12 15:43:01,307 - chromadb.telemetry.product.posthog - ERROR - Failed to send telemetry event ClientCreateCollectionEvent: capture() takes 1 positional argument but 3 were given
+2026-11-12 15:43:01,308 - chromadb.telemetry.product.posthog - ERROR - Failed to send telemetry event ClientCreateCollectionEvent: capture() takes 1 positional argument but 3 were given
+2026-11-12 15:43:01,308 - memory.manager - INFO - ✅ ChromaDB initialized (nueva configuración)
+2026-11-12 15:43:01,313 - memory.manager - INFO - ✅ SQLite database initialized
+2026-11-12 15:43:01,313 - core.llm_factory - INFO - Usando proveedor seleccionado: Ollama
+2026-11-12 15:43:02,032 - tools.search - INFO - ✅ DuckDuckGo available as fallback
+2026-11-12 15:43:02,033 - tools.filesystem - INFO - ✅ Filesystem tool initialized with paths: [WindowsPath('C:/Users/User/OneDrive/Documentos'), WindowsPath('C:/Users/User/Downloads'), WindowsPath('C:/Users/User/Documents'), WindowsPath('D:/aiko_ia_personal/aiko-backend/documents'), WindowsPath('D:/aiko_ia_personal/aiko-backend/uploads')]
+2026-11-12 15:43:02,082 - tools.document_creator - INFO - ✅ DocumentCreatorTool initialized
+2026-11-12 15:43:02,763 - tools.image_analysis - WARNING - Vision model not available (no OpenAI API key)
+2026-11-12 15:43:02,763 - agent.core - INFO - ✅ Aiko Agent initialized with 13 tools
+2026-11-12 15:43:02,764 - core.services - INFO - ✅ All services initialized
+2026-11-12 15:43:02,764 - main - INFO - Aiko services initialized
+2026-11-12 16:16:52,303 - agent.core - INFO - Processing chat message for authenticated user user-123
+2026-11-12 16:16:52,304 - agent.core - INFO - 🎯 Intent detectado: chat
+2026-11-12 16:16:52,304 - agent.core - INFO - 🔧 Tools activas para intent=chat: ['search', 'read_file', 'list_files', 'read_pdf', 'read_docx', 'read_txt', 'analyze_image']
+2026-11-12 16:16:52,305 - agent.core - INFO - 🔒 Tools desactivadas (saludo / mensaje corto)
+2026-11-12 16:16:52,305 - core.llm_factory - INFO - Usando proveedor seleccionado: Ollama
+2026-11-12 16:16:52,581 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 16:16:52,581 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 16:16:52,581 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 16:16:52,581 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 16:17:01,077 - httpx - INFO - HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-11-12 16:17:01,387 - agent.core - INFO - Flujo de IA completado en 8.80 s (intent=chat, modelo=qwen2.5:7b)
+2026-11-12 16:17:01,474 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 16:17:01,475 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 16:17:02,351 - chromadb.telemetry.product.posthog - ERROR - Failed to send telemetry event CollectionAddEvent: capture() takes 1 positional argument but 3 were given
+2026-11-12 16:20:23,527 - main - INFO - Shutting down Aiko backend
+2026-11-12 16:20:23,528 - core.services - INFO - Shutting down services...
+2026-11-12 16:20:23,534 - memory.manager - INFO - ✅ Memory manager shut down
+2026-11-12 16:20:23,535 - core.services - INFO - ✅ All services shut down
+2026-11-12 16:51:45,514 - main - INFO - Starting Aiko backend
+2026-11-12 16:51:45,515 - core.services - INFO - Initializing services...
+2026-11-12 16:51:45,516 - core.services - INFO - 📁 Ensured directory: D:\aiko_ia_personal\aiko-backend\data\chroma
+2026-11-12 16:51:45,516 - core.services - INFO - 📁 Ensured directory: D:\aiko_ia_personal\aiko-backend\data
+2026-11-12 16:51:45,517 - core.services - INFO - 📁 Ensured directory: data
+2026-11-12 16:51:45,517 - core.services - INFO - 📁 Ensured directory: logs
+2026-11-12 16:51:45,763 - memory.manager - INFO - ✅ ChromaDB initialized (nueva configuración)
+2026-11-12 16:51:45,764 - memory.manager - INFO - ✅ SQLite database initialized
+2026-11-12 16:51:45,764 - core.llm_factory - INFO - Usando proveedor seleccionado: Ollama
+2026-11-12 16:51:46,253 - tools.search - INFO - ✅ DuckDuckGo available as fallback
+2026-11-12 16:51:46,255 - tools.filesystem - INFO - ✅ Filesystem tool initialized with paths: [WindowsPath('C:/Users/User/OneDrive/Documentos'), WindowsPath('C:/Users/User/Downloads'), WindowsPath('C:/Users/User/Documents'), WindowsPath('D:/aiko_ia_personal/aiko-backend/documents'), WindowsPath('D:/aiko_ia_personal/aiko-backend/uploads')]
+2026-11-12 16:51:46,285 - tools.document_creator - INFO - ✅ DocumentCreatorTool initialized
+2026-11-12 16:51:46,720 - tools.image_analysis - WARNING - Vision model not available (no OpenAI API key)
+2026-11-12 16:51:46,721 - agent.core - INFO - ✅ Aiko Agent initialized with 13 tools
+2026-11-12 16:51:46,721 - core.services - INFO - ✅ All services initialized
+2026-11-12 16:51:46,721 - main - INFO - Aiko services initialized
+2026-11-12 17:06:44,273 - agent.core - INFO - Processing chat message for authenticated user user-123
+2026-11-12 17:06:44,274 - agent.core - INFO - 🎯 Intent detectado: chat
+2026-11-12 17:06:44,275 - agent.core - INFO - 🔧 Tools activas para intent=chat: ['search', 'read_file', 'list_files', 'read_pdf', 'read_docx', 'read_txt', 'analyze_image']
+2026-11-12 17:06:44,275 - agent.core - INFO - 🔒 Tools desactivadas (saludo / mensaje corto)
+2026-11-12 17:06:44,276 - core.llm_factory - INFO - Usando proveedor seleccionado: Ollama
+2026-11-12 17:06:44,763 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:06:44,763 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:06:44,763 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:06:44,765 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:06:50,982 - httpx - INFO - HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-11-12 17:06:51,402 - agent.core - INFO - Flujo de IA completado en 6.64 s (intent=chat, modelo=qwen2.5:7b)
+2026-11-12 17:06:51,510 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:06:51,515 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:21:13,177 - agent.core - INFO - Processing chat message for authenticated user user-123
+2026-11-12 17:21:13,177 - agent.core - INFO - 🎯 Intent detectado: search
+2026-11-12 17:21:13,178 - agent.core - INFO - 🔧 Tools activas para intent=search: ['search', 'read_file', 'list_files', 'read_pdf', 'read_docx', 'read_txt', 'analyze_image']
+2026-11-12 17:21:13,178 - core.llm_factory - INFO - Usando proveedor seleccionado: Ollama
+2026-11-12 17:21:13,715 - agent.core - INFO - Usando modelo complejo para esta pregunta
+2026-11-12 17:21:14,213 - tools.search - ERROR - DuckDuckGo search error: unsupported format string passed to datetime.timedelta.__format__
+2026-11-12 17:21:14,214 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:21:14,214 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:21:14,215 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:21:14,215 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:21:21,757 - httpx - INFO - HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-11-12 17:21:21,969 - tools.search - ERROR - DuckDuckGo search error: unsupported format string passed to datetime.timedelta.__format__
+2026-11-12 17:21:22,979 - httpx - INFO - HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-11-12 17:21:22,983 - agent.core - INFO - Flujo de IA completado en 8.77 s (intent=search, modelo=qwen2.5:7b)
+2026-11-12 17:21:23,088 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:21:23,095 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:26:34,861 - main - INFO - Shutting down Aiko backend
+2026-11-12 17:26:34,861 - core.services - INFO - Shutting down services...
+2026-11-12 17:26:34,865 - memory.manager - INFO - ✅ Memory manager shut down
+2026-11-12 17:26:34,866 - core.services - INFO - ✅ All services shut down
+2026-11-12 17:27:02,427 - main - INFO - Starting Aiko backend
+2026-11-12 17:27:02,429 - core.services - INFO - Initializing services...
+2026-11-12 17:27:02,429 - core.services - INFO - 📁 Ensured directory: D:\aiko_ia_personal\aiko-backend\data\chroma
+2026-11-12 17:27:02,430 - core.services - INFO - 📁 Ensured directory: D:\aiko_ia_personal\aiko-backend\data
+2026-11-12 17:27:02,430 - core.services - INFO - 📁 Ensured directory: data
+2026-11-12 17:27:02,431 - core.services - INFO - 📁 Ensured directory: logs
+2026-11-12 17:27:02,706 - memory.manager - INFO - ✅ ChromaDB initialized (nueva configuración)
+2026-11-12 17:27:02,707 - memory.manager - INFO - ✅ SQLite database initialized
+2026-11-12 17:27:02,707 - core.llm_factory - INFO - Usando proveedor seleccionado: Ollama
+2026-11-12 17:27:03,222 - tools.search - INFO - ✅ DDGS available as fallback
+2026-11-12 17:27:03,225 - tools.filesystem - INFO - ✅ Filesystem tool initialized with paths: [WindowsPath('C:/Users/User/OneDrive/Documentos'), WindowsPath('C:/Users/User/Downloads'), WindowsPath('C:/Users/User/Documents'), WindowsPath('D:/aiko_ia_personal/aiko-backend/documents'), WindowsPath('D:/aiko_ia_personal/aiko-backend/uploads')]
+2026-11-12 17:27:03,259 - tools.document_creator - INFO - ✅ DocumentCreatorTool initialized
+2026-11-12 17:27:03,704 - tools.image_analysis - WARNING - Vision model not available (no OpenAI API key)
+2026-11-12 17:27:03,705 - agent.core - INFO - ✅ Aiko Agent initialized with 13 tools
+2026-11-12 17:27:03,705 - core.services - INFO - ✅ All services initialized
+2026-11-12 17:27:03,705 - main - INFO - Aiko services initialized
+2026-11-12 17:29:17,977 - agent.core - INFO - Processing chat message for authenticated user user-123
+2026-11-12 17:29:17,977 - agent.core - INFO - 🎯 Intent detectado: search
+2026-11-12 17:29:17,979 - agent.core - INFO - 🔧 Tools activas para intent=search: ['search', 'read_file', 'list_files', 'read_pdf', 'read_docx', 'read_txt', 'analyze_image']
+2026-11-12 17:29:17,979 - core.llm_factory - INFO - Usando proveedor seleccionado: Ollama
+2026-11-12 17:29:18,527 - agent.core - INFO - Usando modelo complejo para esta pregunta
+2026-11-12 17:29:19,199 - primp - INFO - response: https://en.wikipedia.org/w/api.php?action=opensearch&profile=fuzzy&limit=1&search=busca%20en%20internet%20una%20noticia%20actual%20de%20lima%20y%20dame%20las%20fuentes 200
+2026-11-12 17:29:19,311 - primp - INFO - response: https://grokipedia.com/api/typeahead?query=busca+en+internet+una+noticia+actual+de+lima+y+dame+las+fuentes&limit=1 200
+2026-11-12 17:29:19,635 - primp - INFO - response: https://search.brave.com/search?q=busca+en+internet+una+noticia+actual+de+lima+y+dame+las+fuentes&source=web 429
+2026-11-12 17:29:20,075 - primp - INFO - response: https://www.startpage.com/ 200
+2026-11-12 17:29:20,220 - primp - INFO - response: https://www.startpage.com/sp/search 200
+2026-11-12 17:29:20,655 - primp - INFO - response: https://html.duckduckgo.com/html/ 202
+2026-11-12 17:29:21,302 - primp - INFO - response: https://www.mojeek.com/search?q=busca+en+internet+una+noticia+actual+de+lima+y+dame+las+fuentes 200
+2026-11-12 17:29:21,832 - primp - INFO - response: https://search.yahoo.com/search;_ylt=AhYfVk2cznycsYqRzqJfqCNI;_ylu=TSBpn69EaLYPRUfQT-tq8Jg6Zh6t9PJkojkcGFUCPPiPLw8?p=busca+en+internet+una+noticia+actual+de+lima+y+dame+las+fuentes 200
+2026-11-12 17:29:22,284 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:29:22,284 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:29:22,285 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:29:22,285 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:29:28,743 - httpx - INFO - HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-11-12 17:29:28,747 - agent.core - INFO - Flujo de IA completado en 6.46 s (intent=search, modelo=qwen2.5:7b)
+2026-11-12 17:29:28,823 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:29:28,830 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:33:49,673 - agent.core - INFO - Processing chat message for authenticated user user-123
+2026-11-12 17:33:49,674 - agent.core - INFO - 🎯 Intent detectado: search
+2026-11-12 17:33:49,674 - agent.core - INFO - 🔧 Tools activas para intent=search: ['search', 'read_file', 'list_files', 'read_pdf', 'read_docx', 'read_txt', 'analyze_image']
+2026-11-12 17:33:49,675 - core.llm_factory - INFO - Usando proveedor seleccionado: Ollama
+2026-11-12 17:33:50,192 - agent.core - INFO - Usando modelo complejo para esta pregunta
+2026-11-12 17:33:50,737 - primp - INFO - response: https://en.wikipedia.org/w/api.php?action=opensearch&profile=fuzzy&limit=1&search=busca%20una%20noticia%20publicada%20hoy%20sobre%20lima.%20devuelve%20el%20t%C3%ADtulo%20exacto%2C%20el%20medio%2C%20la%20fecha%2C%20un%20resumen%20breve%20y%20el%20enlace%20directo%20al%20art%C3%ADculo.%20no%20uses%20enlaces%20a%20portadas%20o%20secciones%3B%20si%20no%20encuentras%20una%20noticia%20confirmable%2C%20dilo. 200
+2026-11-12 17:33:50,743 - primp - INFO - response: https://grokipedia.com/api/typeahead?query=busca+una+noticia+publicada+hoy+sobre+lima.+devuelve+el+t%C3%ADtulo+exacto%2C+el+medio%2C+la+fecha%2C+un+resumen+breve+y+el+enlace+directo+al+art%C3%ADculo.+no+uses+enlaces+a+portadas+o+secciones%3B+si+no+encuentras+una+noticia+confirmable%2C+dilo.&limit=1 200
+2026-11-12 17:33:51,129 - primp - INFO - response: https://html.duckduckgo.com/html/ 202
+2026-11-12 17:33:51,452 - primp - INFO - response: https://search.brave.com/search?q=busca+una+noticia+publicada+hoy+sobre+lima.+devuelve+el+t%C3%ADtulo+exacto%2C+el+medio%2C+la+fecha%2C+un+resumen+breve+y+el+enlace+directo+al+art%C3%ADculo.+no+uses+enlaces+a+portadas+o+secciones%3B+si+no+encuentras+una+noticia+confirmable%2C+dilo.&source=web 429
+2026-11-12 17:33:52,167 - primp - INFO - response: https://www.mojeek.com/search?q=busca+una+noticia+publicada+hoy+sobre+lima.+devuelve+el+t%C3%ADtulo+exacto%2C+el+medio%2C+la+fecha%2C+un+resumen+breve+y+el+enlace+directo+al+art%C3%ADculo.+no+uses+enlaces+a+portadas+o+secciones%3B+si+no+encuentras+una+noticia+confirmable%2C+dilo. 200
+2026-11-12 17:33:52,528 - primp - INFO - response: https://www.startpage.com/ 200
+2026-11-12 17:33:52,677 - primp - INFO - response: https://www.startpage.com/sp/search 200
+2026-11-12 17:33:53,152 - primp - INFO - response: https://search.yahoo.com/search;_ylt=2fJvMJL3Gvt-j9tTAKBXGgye;_ylu=Wi1Ub8W_l0nx9imbReUFqHTjfApeY3q17Jjc_pwKbp2P9Ok?p=busca+una+noticia+publicada+hoy+sobre+lima.+devuelve+el+t%C3%ADtulo+exacto%2C+el+medio%2C+la+fecha%2C+un+resumen+breve+y+el+enlace+directo+al+art%C3%ADculo.+no+uses+enlaces+a+portadas+o+secciones%3B+si+no+encuentras+una+noticia+confirmable%2C+dilo. 200
+2026-11-12 17:33:53,567 - tools.search - ERROR - DDGS search error: No results found.
+Traceback (most recent call last):
+  File "D:\aiko_ia_personal\aiko-backend\tools\search.py", line 116, in _ddgs_search_sync
+    results = self.ddgs.text(
+              ^^^^^^^^^^^^^^^
+  File "C:\Users\User\AppData\Local\Python\pythoncore-3.11-64\Lib\site-packages\ddgs\ddgs.py", line 228, in text
+    return self._search_sync("text", query, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\AppData\Local\Python\pythoncore-3.11-64\Lib\site-packages\ddgs\ddgs.py", line 224, in _search_sync
+    raise DDGSException(err or "No results found.")
+ddgs.exceptions.DDGSException: No results found.
+2026-11-12 17:33:53,581 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:33:53,581 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:33:53,582 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:33:53,656 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:33:56,753 - httpx - INFO - HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-11-12 17:33:56,757 - agent.core - INFO - Flujo de IA completado en 3.09 s (intent=search, modelo=qwen2.5:7b)
+2026-11-12 17:33:56,845 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:33:56,853 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:33:56,883 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:37:57,514 - agent.core - INFO - Processing chat message for authenticated user user-123
+2026-11-12 17:37:57,516 - agent.core - INFO - 🎯 Intent detectado: search
+2026-11-12 17:37:57,517 - agent.core - INFO - 🔧 Tools activas para intent=search: ['search', 'read_file', 'list_files', 'read_pdf', 'read_docx', 'read_txt', 'analyze_image']
+2026-11-12 17:37:57,518 - agent.core - INFO - 🔒 Tools desactivadas (saludo / mensaje corto)
+2026-11-12 17:37:57,520 - core.llm_factory - INFO - Usando proveedor seleccionado: Ollama
+2026-11-12 17:37:58,070 - agent.core - INFO - Usando modelo complejo para esta pregunta
+2026-11-12 17:37:58,071 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:37:58,073 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:37:58,074 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:37:58,076 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:37:58,207 - httpx - INFO - HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-11-12 17:37:59,965 - agent.core - INFO - Flujo de IA completado en 1.89 s (intent=search, modelo=qwen2.5:7b)
+2026-11-12 17:38:02,756 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)
+2026-11-12 17:38:02,757 - core.supabase_client - WARNING - Supabase no configurado (falta SUPABASE_URL o SERVICE_ROLE_KEY)

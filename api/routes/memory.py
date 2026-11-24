@@ -16,7 +16,7 @@ router = APIRouter()
 
 class SaveFactRequest(BaseModel):
     """Save user fact request."""
-    user_id: str
+    user_id: Optional[str] = None  # ignored; identity comes from the access token
     fact: str
     category: str = "general"
     confidence: float = 0.8
@@ -24,7 +24,7 @@ class SaveFactRequest(BaseModel):
 
 class SearchMemoryRequest(BaseModel):
     """Search memory request."""
-    user_id: str
+    user_id: Optional[str] = None  # ignored; identity comes from the access token
     query: str
     limit: int = 5
 
@@ -32,16 +32,18 @@ class SearchMemoryRequest(BaseModel):
 @router.get("/facts/{user_id}")
 async def get_user_facts(
     user_id: str,
-    api_key: str = Depends(verify_api_key),
+    authenticated_user_id: str = Depends(verify_api_key),
 ):
     """Get all user facts."""
     try:
         memory = await MemoryManager.get_instance()
-        facts = await memory.get_user_facts(user_id)
+        if user_id != authenticated_user_id:
+            raise HTTPException(status_code=403, detail="No puedes consultar la memoria de otro usuario.")
+        facts = await memory.get_user_facts(authenticated_user_id)
         
         return {
             "success": True,
-            "user_id": user_id,
+            "user_id": authenticated_user_id,
             "facts": facts,
         }
     except Exception as e:
@@ -52,13 +54,13 @@ async def get_user_facts(
 @router.post("/facts")
 async def save_user_fact(
     request: SaveFactRequest,
-    api_key: str = Depends(verify_api_key),
+    authenticated_user_id: str = Depends(verify_api_key),
 ):
     """Save a user fact."""
     try:
         memory = await MemoryManager.get_instance()
         fact_id = await memory.save_user_fact(
-            user_id=request.user_id,
+            user_id=authenticated_user_id,
             fact=request.fact,
             category=request.category,
             confidence=request.confidence,
@@ -67,7 +69,7 @@ async def save_user_fact(
         return {
             "success": True,
             "fact_id": fact_id,
-            "user_id": request.user_id,
+            "user_id": authenticated_user_id,
         }
     except Exception as e:
         logger.error(f"Error saving fact: {e}")
@@ -77,14 +79,14 @@ async def save_user_fact(
 @router.post("/search")
 async def search_memory(
     request: SearchMemoryRequest,
-    api_key: str = Depends(verify_api_key),
+    authenticated_user_id: str = Depends(verify_api_key),
 ):
     """Search memory."""
     try:
         memory = await MemoryManager.get_instance()
         results = await memory.search_relevant(
             query=request.query,
-            user_id=request.user_id,
+            user_id=authenticated_user_id,
             limit=request.limit,
         )
         

@@ -1,8 +1,11 @@
 """Memory management system using ChromaDB and SQLite."""
 
 import logging
+import asyncio
+import queue
 import sqlite3
 import json
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -27,6 +30,13 @@ class MemoryManager:
         """Initialize memory manager."""
         self.chroma_persist_dir = Path(settings.CHROMA_PERSIST_DIR)
         self.db_path = Path(settings.DB_PATH)
+        self.chroma = None
+        self.conversations_collection = None
+        self.knowledge_collection = None
+        self.user_facts_collection = None
+        self._chroma_write_queue = queue.Queue(maxsize=2000)
+        self._chroma_worker = None
+        self._chroma_worker_lock = threading.Lock()
         
         # Initialize ChromaDB
         self._init_chroma()
@@ -44,9 +54,13 @@ class MemoryManager:
     @classmethod
     async def shutdown(cls):
         """Shutdown memory manager."""
-        if cls._instance:
-            if cls._db_connection:
-                cls._db_connection.close()
+        instance = cls._instance
+        if instance:
+            instance._stop_chroma_worker()
+            if instance._db_connection:
+                instance._db_connection.close()
+                instance._db_connection = None
+            cls._instance = None
             logger.info("✅ Memory manager shut down")
     
     @classmethod
@@ -61,7 +75,11 @@ class MemoryManager:
         try:
             from chromadb import PersistentClient
             
-            self.chroma = PersistentClient(path=str(self.chroma_persist_dir))
+            # Disable optional telemetry: it was generating PostHog errors on startup.
+            self.chroma = PersistentClient(
+                path=str(self.chroma_persist_dir),
+                settings=ChromaSettings(anonymized_telemetry=False),
+            )
             
             # Create or get collections
             self.conversations_collection = self.chroma.get_or_create_collection(
@@ -77,11 +95,74 @@ class MemoryManager:
                 metadata={"hnsw:space": "cosine"}
             )
             
+            self._start_chroma_worker()
             logger.info("✅ ChromaDB initialized (nueva configuración)")
         except Exception as e:
-            logger.error(f"Failed to initialize ChromaDB: {e}")
+            logger.exception("Failed to initialize ChromaDB: %s", e)
             self.chroma = None
-    
+            self.conversations_collection = None
+            self.knowledge_collection = None
+            self.user_facts_collection = None
+
+    def _start_chroma_worker(self) -> None:
+        """Run slow Chroma writes away from the FastAPI event loop."""
+        if self.chroma is None:
+            return
+        with self._chroma_worker_lock:
+            if self._chroma_worker and self._chroma_worker.is_alive():
+                return
+            self._chroma_worker = threading.Thread(
+                target=self._chroma_write_loop,
+                name="aiko-chroma-writer",
+                daemon=True,
+            )
+            self._chroma_worker.start()
+
+    def _chroma_write_loop(self) -> None:
+        while True:
+            item = self._chroma_write_queue.get()
+            try:
+                if item is None:
+                    return
+                collection, ids, documents, metadatas = item
+                collection.add(ids=ids, documents=documents, metadatas=metadatas)
+            except Exception:
+                logger.exception("No se pudo indexar un registro en ChromaDB")
+            finally:
+                self._chroma_write_queue.task_done()
+
+    def _queue_chroma_add(
+        self,
+        collection,
+        record_id: str,
+        document: str,
+        metadata: dict,
+    ) -> bool:
+        if collection is None or not self._chroma_worker or not self._chroma_worker.is_alive():
+            return False
+        try:
+            self._chroma_write_queue.put_nowait(
+                (collection, [record_id], [document], [metadata])
+            )
+            return True
+        except queue.Full:
+            logger.warning(
+                "Cola de ChromaDB llena; el registro queda guardado en SQLite "
+                "pero no se indexará semánticamente ahora"
+            )
+            return False
+
+    def _stop_chroma_worker(self) -> None:
+        worker = self._chroma_worker
+        if not worker or not worker.is_alive():
+            return
+        try:
+            self._chroma_write_queue.put(None, timeout=1)
+        except queue.Full:
+            logger.warning("Cola de ChromaDB llena durante el cierre; el escritor seguirá como daemon")
+        worker.join(timeout=2)
+        if worker.is_alive():
+            logger.warning("El escritor ChromaDB sigue procesando; se cerrará al salir del proceso")
 
 
     def _init_sqlite(self):
@@ -175,17 +256,20 @@ class MemoryManager:
                 self._db_connection.commit()
             
             # Save to ChromaDB for semantic search
-            if self.chroma and self.conversations_collection:
-                self.conversations_collection.add(
-                    ids=[message_id],
-                    documents=[content],
-                    metadatas=[{
+            if self.chroma and self.conversations_collection is not None:
+                queued = self._queue_chroma_add(
+                    self.conversations_collection,
+                    message_id,
+                    content,
+                    {
                         "user_id": user_id,
                         "conversation_id": conversation_id,
                         "role": role,
                         "timestamp": datetime.now().isoformat(),
-                    }]
+                    },
                 )
+                if not queued:
+                    logger.warning("Mensaje guardado en SQLite; ChromaDB no pudo aceptar el índice")
             
             return message_id
         except Exception as e:
@@ -203,10 +287,11 @@ class MemoryManager:
             if not self.chroma or not self.conversations_collection:
                 return []
             
-            results = self.conversations_collection.query(
+            results = await asyncio.to_thread(
+                self.conversations_collection.query,
                 query_texts=[query],
                 n_results=limit,
-                where={"user_id": user_id}
+                where={"user_id": user_id},
             )
             
             return [
@@ -279,16 +364,19 @@ class MemoryManager:
                 self._db_connection.commit()
             
             # Also save to ChromaDB
-            if self.chroma and self.user_facts_collection:
-                self.user_facts_collection.add(
-                    ids=[fact_id],
-                    documents=[fact],
-                    metadatas=[{
+            if self.chroma and self.user_facts_collection is not None:
+                queued = self._queue_chroma_add(
+                    self.user_facts_collection,
+                    fact_id,
+                    fact,
+                    {
                         "user_id": user_id,
                         "category": category,
                         "confidence": confidence,
-                    }]
+                    },
                 )
+                if not queued:
+                    logger.warning("Dato guardado en SQLite; ChromaDB no pudo aceptar el índice")
             
             return fact_id
         except Exception as e:

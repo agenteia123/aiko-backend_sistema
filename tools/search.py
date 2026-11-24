@@ -1,10 +1,11 @@
 """Internet search tool using Tavily and DuckDuckGo."""
 
 import logging
+import asyncio
 from typing import Optional
 
 from langchain_core.tools import StructuredTool
-from pydantic import BaseModel, Field
+from langchain_core.pydantic_v1 import BaseModel, Field
 
 from config.settings import settings
 
@@ -40,9 +41,9 @@ class SearchTool:
         
         # DuckDuckGo (solo si se puede inicializar, no rompe el tool)
         try:
-            from duckduckgo_search import DDGS
-            self.ddgs = DDGS()
-            logger.info("✅ DuckDuckGo available as fallback")
+            from ddgs import DDGS
+            self.ddgs = DDGS(timeout=15)
+            logger.info("✅ DDGS available as fallback")
         except Exception as e:
             logger.warning(f"DuckDuckGo no disponible: {e}")
             self.ddgs = None
@@ -60,10 +61,14 @@ class SearchTool:
     async def _search_async(self, query: str, max_results: int = 5) -> str:
         try:
             if self.tavily_available:
-                return await self._tavily_search(query, max_results)
-            return self._ddgs_search_sync(query, max_results)
+                return await asyncio.to_thread(
+                    self._tavily_search_sync, query, max_results
+                )
+            return await asyncio.to_thread(
+                self._ddgs_search_sync, query, max_results
+            )
         except Exception as e:
-            logger.error(f"Search error: {e}")
+            logger.exception("Search error: %s", e)
             return f"Error during search: {str(e)}"
     
     def _search_sync(self, query: str, max_results: int = 5) -> str:
@@ -72,31 +77,13 @@ class SearchTool:
                 return self._tavily_search_sync(query, max_results)
             return self._ddgs_search_sync(query, max_results)
         except Exception as e:
-            logger.error(f"Search error: {e}")
+            logger.exception("Search error: %s", e)
             return f"Error during search: {str(e)}"
     
     async def _tavily_search(self, query: str, max_results: int = 5) -> str:
-        try:
-            response = self.tavily.search(
-                query=query,
-                max_results=max_results,
-                include_answer=True,
-            )
-            
-            parts = []
-            if response.get("answer"):
-                parts.append(f"Resumen: {response['answer']}")
-            
-            results = response.get("results", [])
-            if results:
-                parts.append("\nFuentes:")
-                for r in results[:max_results]:
-                    parts.append(f"- {r.get('title', '')}: {r.get('content', '')[:300]}")
-            
-            return "\n".join(parts) if parts else "No se encontraron resultados."
-        except Exception as e:
-            logger.error(f"Tavily search error: {e}")
-            return self._ddgs_search_sync(query, max_results)
+        return await asyncio.to_thread(
+            self._tavily_search_sync, query, max_results
+        )
     
     def _tavily_search_sync(self, query: str, max_results: int = 5) -> str:
         try:
@@ -118,7 +105,7 @@ class SearchTool:
             
             return "\n".join(parts) if parts else "No se encontraron resultados."
         except Exception as e:
-            logger.error(f"Tavily search error: {e}")
+            logger.exception("Tavily search error: %s", e)
             return self._ddgs_search_sync(query, max_results)
     
     def _ddgs_search_sync(self, query: str, max_results: int = 5) -> str:
@@ -126,7 +113,11 @@ class SearchTool:
             return "No hay motor de búsqueda disponible."
         
         try:
-            results = list(self.ddgs.text(query, max_results=max_results))
+            results = self.ddgs.text(
+                query,
+                max_results=max_results,
+                backend="auto",
+            )
             
             if not results:
                 return f"No results found for: {query}"
@@ -139,5 +130,5 @@ class SearchTool:
             
             return formatted
         except Exception as e:
-            logger.error(f"DuckDuckGo search error: {e}")
+            logger.exception("DDGS search error: %s", e)
             return f"Error searching: {str(e)}"

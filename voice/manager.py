@@ -34,6 +34,12 @@ class VoiceManager:
                 return await self._whisper_transcribe(audio_data, language)
             elif self.stt_provider == "google":
                 return await self._google_transcribe(audio_data, language)
+            elif self.stt_provider == "disabled":
+                return {
+                    "success": False,
+                    "text": "",
+                    "error": "La transcripción del backend está desactivada.",
+                }
             else:
                 return {
                     "success": False,
@@ -63,8 +69,8 @@ class VoiceManager:
             elif self.tts_provider == "windows":
                 return await self._windows_synthesize(text, voice, language)
             else:
-                # Fallback a Windows
-                return await self._windows_synthesize(text, voice, language)
+                logger.error("TTS provider no compatible: %s", self.tts_provider)
+                return None
         except Exception as e:
             logger.error(f"Synthesis error: {e}", exc_info=True)
             return None

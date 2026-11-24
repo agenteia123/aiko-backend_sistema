@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class LLMFactory:
-    """Factory for creating LLM instances with automatic fallback cascade."""
+    """Create only the provider selected by the user or private backend config."""
 
     _failed_providers: set[str] = set()
 
@@ -29,62 +29,31 @@ class LLMFactory:
         return LLMFactory.create_llm_for_task("normal")
 
     @staticmethod
-    def create_llm_for_task(task_type: str = "normal") -> BaseLanguageModel:
-        """
-        - normal  → Groq primero, luego Gemini
-        - complex → Gemini primero, luego Groq
-        """
-        api_providers = []
+    def create_llm_for_task(
+        task_type: str = "normal",
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
+    ) -> BaseLanguageModel:
+        """Build the exact selected provider/model; never silently cascade."""
+        selected = (provider or settings.LLM_PROVIDER).strip().lower()
+        allowed = {item.strip().lower() for item in settings.ALLOWED_LLM_PROVIDERS}
+        creators = {
+            "ollama": ("Ollama", LLMFactory._create_ollama, True),
+            "groq": ("Groq", LLMFactory._create_groq, bool(settings.GROQ_API_KEY)),
+            "google": ("Google", LLMFactory._create_google, bool(settings.GOOGLE_API_KEY)),
+            "openai": ("OpenAI", LLMFactory._create_openai, bool(settings.OPENAI_API_KEY)),
+            "anthropic": ("Anthropic", LLMFactory._create_anthropic, bool(settings.ANTHROPIC_API_KEY)),
+            "grok": ("Grok", LLMFactory._create_grok, bool(settings.GROK_API_KEY)),
+        }
+        if selected not in allowed or selected not in creators:
+            raise ValueError(f"Proveedor no autorizado: {selected}")
 
-        if task_type == "complex":
-            if getattr(settings, "GOOGLE_API_KEY", None):
-                api_providers.append(("Google", LLMFactory._create_google))
-            if getattr(settings, "GROQ_API_KEY", None):
-                api_providers.append(("Groq", LLMFactory._create_groq))
-        else:
-            if getattr(settings, "GROQ_API_KEY", None):
-                api_providers.append(("Groq", LLMFactory._create_groq))
-            if getattr(settings, "GOOGLE_API_KEY", None):
-                api_providers.append(("Google", LLMFactory._create_google))
+        name, creator, configured = creators[selected]
+        if not configured:
+            raise ValueError(f"El proveedor {name} no tiene credenciales configuradas")
 
-        if getattr(settings, "OPENAI_API_KEY", None):
-            api_providers.append(("OpenAI", LLMFactory._create_openai))
-
-        if getattr(settings, "ANTHROPIC_API_KEY", None):
-            api_providers.append(("Anthropic", LLMFactory._create_anthropic))
-
-        if getattr(settings, "GROK_API_KEY", None):
-            api_providers.append(("Grok", LLMFactory._create_grok))
-
-        if LLMFactory._prefer_local():
-            providers = [("Ollama", LLMFactory._create_ollama)] + api_providers
-            logger.info("Modo LOCAL: Ollama tiene prioridad")
-        else:
-            providers = api_providers + [("Ollama", LLMFactory._create_ollama)]
-            logger.info(
-                f"Modo PRODUCTION: APIs tienen prioridad "
-                f"(task={task_type}, orden={[n for n, _ in api_providers]})"
-            )
-
-        last_error = None
-        for name, creator in providers:
-            if name in LLMFactory._failed_providers:
-                logger.info(f"Saltando {name} (ya falló en esta sesión)")
-                continue
-
-            try:
-                logger.info(f"Intentando {name}...")
-                llm = creator()
-                logger.info(f"✅ Usando modelo: {name}")
-                return llm
-            except Exception as e:
-                last_error = e
-                logger.warning(f"❌ {name} falló al crear: {e}")
-                LLMFactory._failed_providers.add(name)
-                continue
-
-        logger.error(f"Todos los proveedores fallaron. Último error: {last_error}")
-        return LLMFactory._create_dummy()
+        logger.info("Usando proveedor seleccionado: %s", name)
+        return creator(model)
 
     @staticmethod
     def mark_failed(provider_name: str):
@@ -97,36 +66,36 @@ class LLMFactory:
         logger.info("Lista de proveedores fallidos reiniciada")
 
     @staticmethod
-    def _create_openai() -> BaseLanguageModel:
+    def _create_openai(model: Optional[str] = None) -> BaseLanguageModel:
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(
             api_key=settings.OPENAI_API_KEY,
-            model="gpt-4o-mini",
+            model=model or "gpt-4o-mini",
             temperature=0.5,
             max_tokens=2048,
         )
 
     @staticmethod
-    def _create_anthropic() -> BaseLanguageModel:
+    def _create_anthropic(model: Optional[str] = None) -> BaseLanguageModel:
         from langchain_anthropic import ChatAnthropic
         return ChatAnthropic(
             api_key=settings.ANTHROPIC_API_KEY,
-            model="claude-3-5-sonnet-20241022",
+            model=model or "claude-3-5-sonnet-20241022",
             temperature=0.5,
             max_tokens=2048,
         )
 
     @staticmethod
-    def _create_google() -> BaseLanguageModel:
-        """SDK google-genai. Si no hay texto útil, falla y permite cascada a Groq."""
+    def _create_google(model: Optional[str] = None) -> BaseLanguageModel:
+        """Create the explicitly selected Google GenAI model; never cascade."""
         from langchain_core.language_models.chat_models import BaseChatModel
         from langchain_core.messages import AIMessage, BaseMessage, SystemMessage
         from langchain_core.outputs import ChatGeneration, ChatResult
         from langchain_core.callbacks import CallbackManagerForLLMRun
-        from pydantic import Field
+        from langchain_core.pydantic_v1 import Field
 
         class GeminiChat(BaseChatModel):
-            model_name: str = Field(default="gemini-3.6-flash")
+            model_name: str = Field(default=settings.GOOGLE_MODEL)
             api_key: str = Field(default="")
             temperature: float = Field(default=0.5)
 
@@ -158,52 +127,16 @@ class LLMFactory:
 
                 prompt = "\n".join(parts)
 
-                model_candidates = [
-                    self.model_name,
-                    "gemini-3.6-flash",
-                    "gemini-3.5-flash",
-                    "gemini-2.5-flash",
-                    "gemini-2.0-flash",
-                ]
-
-                seen = set()
-                unique_models = []
-                for mid in model_candidates:
-                    if mid and mid not in seen:
-                        seen.add(mid)
-                        unique_models.append(mid)
-
-                last_err = None
-                text = ""
-                used_model = None
-
-                for model_id in unique_models:
-                    try:
-                        response = client.models.generate_content(
-                            model=model_id,
-                            contents=prompt,
-                        )
-                        # Solo texto real; NUNCA str(response) completo
-                        text = getattr(response, "text", None) or ""
-                        text = str(text).strip()
-
-                        if not text:
-                            raise RuntimeError(
-                                f"Gemini devolvió respuesta vacía ({model_id})"
-                            )
-
-                        used_model = model_id
-                        break
-                    except Exception as e:
-                        last_err = e
-                        logger.warning(f"Gemini modelo {model_id} falló: {e}")
-                        text = ""
-                        continue
-
+                model_id = self.model_name
+                response = client.models.generate_content(
+                    model=model_id,
+                    contents=prompt,
+                )
+                text = str(getattr(response, "text", None) or "").strip()
                 if not text:
-                    raise RuntimeError(f"Gemini no disponible: {last_err}")
+                    raise RuntimeError(f"Gemini devolvió respuesta vacía ({model_id})")
 
-                logger.info(f"✅ Gemini respondió con modelo: {used_model}")
+                logger.info("Gemini respondió con el modelo seleccionado: %s", model_id)
                 return ChatResult(
                     generations=[ChatGeneration(message=AIMessage(content=text))]
                 )
@@ -226,54 +159,53 @@ class LLMFactory:
 
         return GeminiChat(
             api_key=api_key,
-            model_name="gemini-3.6-flash",
+            model_name=model or settings.GOOGLE_MODEL,
             temperature=0.5,
         )
 
     @staticmethod
-    def _create_groq() -> BaseLanguageModel:
+    def _create_groq(model: Optional[str] = None) -> BaseLanguageModel:
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(
             api_key=settings.GROQ_API_KEY,
-            model=getattr(settings, "GROQ_MODEL", "openai/gpt-oss-20b"),
+            model=model or getattr(settings, "GROQ_MODEL", "openai/gpt-oss-20b"),
             base_url="https://api.groq.com/openai/v1",
             temperature=0.5,
             max_tokens=2048,
         )
 
     @staticmethod
-    def _create_grok() -> BaseLanguageModel:
+    def _create_grok(model: Optional[str] = None) -> BaseLanguageModel:
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(
             api_key=settings.GROK_API_KEY,
-            model="grok-3",
+            model=model or "grok-3",
             base_url="https://api.x.ai/v1",
             temperature=0.5,
             max_tokens=2048,
         )
 
     @staticmethod
-    def _create_ollama() -> BaseLanguageModel:
-        model = getattr(settings, "OLLAMA_MODEL", "qwen2.5:7b")
+    def _create_ollama(model: Optional[str] = None) -> BaseLanguageModel:
+        model = model or getattr(settings, "OLLAMA_MODEL", "qwen2.5:7b")
         base_url = getattr(settings, "OLLAMA_BASE_URL", "http://localhost:11434")
         timeout = getattr(settings, "OLLAMA_TIMEOUT", 120)
-
         try:
             from langchain_ollama import ChatOllama
-            return ChatOllama(
-                base_url=base_url,
-                model=model,
-                temperature=0.5,
-                num_ctx=8192,
-                timeout=timeout,
-            )
-        except ImportError:
-            from langchain_community.chat_models import ChatOllama
-            return ChatOllama(
-                base_url=base_url,
-                model=model,
-                temperature=0.5,
-            )
+        except ImportError as exc:
+            raise RuntimeError(
+                "Falta langchain-ollama. Ejecuta: "
+                "pymanager exec -3.11 -m pip install -r requirements.txt"
+            ) from exc
+
+        return ChatOllama(
+            base_url=base_url,
+            model=model,
+            temperature=0.5,
+            num_ctx=8192,
+            keep_alive=getattr(settings, "OLLAMA_KEEP_ALIVE", "10m"),
+            client_kwargs={"timeout": timeout},
+        )
 
     @staticmethod
     def _create_dummy() -> BaseLanguageModel:

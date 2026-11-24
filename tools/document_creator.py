@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from langchain_core.tools import StructuredTool
-from pydantic import BaseModel, Field
+from langchain_core.pydantic_v1 import BaseModel, Field
 
 
 logger = logging.getLogger(__name__)
@@ -88,26 +88,24 @@ class CreatePDFInput(BaseModel):
 
 class DocumentCreatorTool:
     def __init__(self, allowed_paths: list[str] | None = None):
+        self.project_root = Path(__file__).resolve().parents[1]
         self.allowed_paths = [
-            Path(p).resolve() for p in (allowed_paths or ["./documents", "./uploads"])
-        ]
-        self.extra_roots = [
-            Path("C:/Users/User/Downloads").resolve(),
-            Path("C:/Users/User/Documents").resolve(),
-            Path("C:/Users/User/OneDrive/Documentos").resolve(),
-            Path("C:/Users/aleja/Downloads").resolve(),
-            Path("C:/Users/aleja/Documents").resolve(),
-            Path("C:/Users/aleja/OneDrive/Documentos").resolve(),
-            Path("./data/uploads").resolve(),
-            Path("./uploads").resolve(),
+            self._resolve_path(Path(p))
+            for p in (allowed_paths or ["./documents", "./uploads"])
         ]
         logger.info("✅ DocumentCreatorTool initialized")
 
+    def _resolve_path(self, path: Path) -> Path:
+        expanded = path.expanduser()
+        if not expanded.is_absolute():
+            expanded = self.project_root / expanded
+        return expanded.resolve()
+
     def _is_allowed(self, path: Path) -> bool:
         try:
-            resolved = path.resolve()
-            for allowed in self.allowed_paths + self.extra_roots:
-                if str(resolved).lower().startswith(str(allowed).lower()):
+            resolved = self._resolve_path(path)
+            for allowed in self.allowed_paths:
+                if resolved == allowed or allowed in resolved.parents:
                     return True
             return False
         except Exception:
@@ -118,19 +116,16 @@ class DocumentCreatorTool:
         out: list[Path] = []
         for raw in images or []:
             try:
-                p = Path(str(raw).strip().strip('"').strip("'"))
+                p = self._resolve_path(Path(str(raw).strip().strip('"').strip("'")))
                 if not p.exists() or not p.is_file():
                     logger.warning(f"Imagen no encontrada: {p}")
                     continue
                 if p.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}:
                     logger.warning(f"Formato de imagen no soportado: {p}")
                     continue
-                # Permitir si está en carpetas allowed O si es un upload del proyecto
                 if not self._is_allowed(p):
-                    # aún permitir uploads del backend
-                    if "upload" not in str(p).lower() and "aiko" not in str(p).lower():
-                        logger.warning(f"Imagen fuera de rutas permitidas: {p}")
-                        continue
+                    logger.warning(f"Imagen fuera de rutas permitidas: {p}")
+                    continue
                 out.append(p.resolve())
             except Exception as e:
                 logger.warning(f"No se pudo usar imagen {raw}: {e}")
@@ -342,7 +337,7 @@ Un enfoque ordenado reduce confusión y mejora la constancia. Este material es o
             if self._word_count(content) < 80:
                 return "❌ Error: contenido demasiado corto."
 
-            file_path = Path(path)
+            file_path = self._resolve_path(Path(path))
             if file_path.suffix.lower() != ".docx":
                 file_path = file_path.with_suffix(".docx")
             if not self._is_allowed(file_path):
@@ -491,7 +486,7 @@ Un enfoque ordenado reduce confusión y mejora la constancia. Este material es o
             if rows is None:
                 rows = []
 
-            file_path = Path(path)
+            file_path = self._resolve_path(Path(path))
             if file_path.suffix.lower() != ".xlsx":
                 file_path = file_path.with_suffix(".xlsx")
             if not self._is_allowed(file_path):
@@ -714,7 +709,7 @@ Un enfoque ordenado reduce confusión y mejora la constancia. Este material es o
             if not slides:
                 return "❌ Error: indica al menos una diapositiva."
 
-            file_path = Path(path)
+            file_path = self._resolve_path(Path(path))
             if file_path.suffix.lower() != ".pptx":
                 file_path = file_path.with_suffix(".pptx")
             if not self._is_allowed(file_path):
@@ -939,7 +934,7 @@ Un enfoque ordenado reduce confusión y mejora la constancia. Este material es o
             if self._word_count(content) < 80:
                 return "❌ Error: contenido demasiado corto."
 
-            file_path = Path(path)
+            file_path = self._resolve_path(Path(path))
             if file_path.suffix.lower() != ".pdf":
                 file_path = file_path.with_suffix(".pdf")
             if not self._is_allowed(file_path):
