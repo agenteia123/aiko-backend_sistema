@@ -260,6 +260,28 @@ def epic_launch_uris(target):
             yield "com.epicgames.launcher://apps/" + quote(":".join(launch_id), safe="") + "?action=launch&silent=true"
 
 
+def riot_shortcut_target(shortcut):
+    """Read a Riot shortcut without triggering Windows' repair dialog."""
+    system_root = Path(os.environ.get("SystemRoot", r"C:\Windows"))
+    powershell = system_root / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    try:
+        result = subprocess.run(
+            [str(powershell), "-NoProfile", "-NonInteractive", "-Command",
+             "[Console]::OutputEncoding = [Text.Encoding]::UTF8; "
+             "(New-Object -ComObject WScript.Shell).CreateShortcut($env:AIKO_RIOT_LINK).TargetPath"],
+            env={**os.environ, "AIKO_RIOT_LINK": str(shortcut)},
+            capture_output=True, check=True, timeout=6,
+            encoding="utf-8-sig", errors="replace",
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        target = Path(result.stdout.strip())
+        if target.is_absolute() and target.name.casefold() == "riotclientservices.exe" and target.is_file():
+            return target
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return None
+
+
 def start_menu_app_uris(target):
     system_root = Path(os.environ.get("SystemRoot", r"C:\Windows"))
     powershell = system_root / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
@@ -287,15 +309,18 @@ def open_game_shortcut(target):
     name = normalize(target)
     if not name or len(name) > 100:
         raise ValueError("Nombre de aplicación inválido.")
-    attempts = [(str(path), "") for path in installed_shortcuts(target)]
-    if target in {"Valorant", "Riot Client"}:
-        client = riot_client_path()
-        if client is not None:
-            arguments = "--launch-product=valorant --launch-patchline=live" if target == "Valorant" else ""
-            attempts.append((str(client), arguments))
+    is_riot_game = target in {"Valorant", "Riot Client"}
 
     def destinations():
-        yield from attempts
+        if is_riot_game:
+            arguments = "--launch-product=valorant --launch-patchline=live" if target == "Valorant" else ""
+            if client := riot_client_path():
+                yield str(client), arguments
+            for shortcut in installed_shortcuts(target):
+                if shortcut.suffix.casefold() == ".lnk" and (client := riot_shortcut_target(shortcut)):
+                    yield str(client), arguments
+            return
+        yield from ((str(path), "") for path in installed_shortcuts(target))
         for source in (steam_launch_uris, epic_launch_uris, start_menu_app_uris):
             yield from ((uri, "") for uri in source(name))
 
@@ -315,6 +340,11 @@ def open_game_shortcut(target):
             logger.info("Windows recibió la orden de abrir %s desde %s", target, path)
             return
 
+    if not failures and is_riot_game:
+        raise FileNotFoundError(
+            "No encontré un RiotClientServices.exe válido en el registro de instalación "
+            "de Riot ni en los accesos directos. Comprueba si Riot abre desde Inicio."
+        )
     if not failures:
         raise FileNotFoundError(f"No encontré «{target}» en Inicio, el escritorio, Steam ni Epic.")
     raise OSError(f"Windows no pudo iniciar {target}. " + " · ".join(dict.fromkeys(failures)))
