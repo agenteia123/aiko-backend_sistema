@@ -863,7 +863,7 @@ class AikoAgent:
                     reply = f"[Ver el video más reciente de Aquino]({video_url})."
                 intent = "youtube"
             elif game:
-                reply = f"Orden de abrir {game} desde el acceso directo de Windows."
+                reply = f"Orden de abrir {game} en Windows."
                 intent = "desktop_game"
             elif reminder:
                 when_dt = datetime.fromisoformat(reminder["at"])

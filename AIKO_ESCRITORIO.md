@@ -10,7 +10,7 @@ Arranca desde una terminal interactiva de Windows con `pymanager exec -3.11 main
 
 ## Aplicaciones y juegos
 
-Coloca accesos directos de Windows en `%LOCALAPPDATA%\Aiko\accesos`. Usa el acceso oficial de cada juego o el acceso de instancia que exporte tu launcher de Minecraft.
+Aiko busca accesos existentes en Inicio y el escritorio. Puedes indicar uno específico colocando un acceso directo de Windows en `%LOCALAPPDATA%\Aiko\accesos`. Usa el acceso oficial de cada juego o el acceso de instancia que exporte tu launcher de Minecraft.
 
 | Orden después de «Aiko» | Acceso directo |
 | --- | --- |
@@ -35,3 +35,5 @@ Al autorizar Gmail en el inicio, el navegador permite aprobar el acceso de solo 
 Si escribes esa orden de Aquino en el chat, recibirás un enlace al video verificado o a la pestaña Videos del canal si falta la configuración o falla el feed. Para abrir automáticamente el video verificado al enviarlo por el chat local, acepta el permiso de YouTube en la terminal al iniciar el backend en Windows. Esta opción requiere que el backend esté enlazado a loopback y se recibe solo desde loopback. La reproducción automática depende del navegador.
 
 Para abrir juegos desde el chat local de Windows, acepta el permiso correspondiente al arrancar el backend. Escribe «abre Valorant», «abre Fortnite» o los nombres de las instancias de Minecraft definidos arriba. Se usan los mismos accesos directos que por voz.
+
+Puedes pedir «abre Riot Client», «abre Steam» y «abre Epic Games». Para Valorant, si no hay acceso directo, Aiko busca el cliente registrado por Riot y le pide abrir Valorant. Para Fortnite y Minecraft se usan los accesos de Windows que haya instalado el launcher. Las bibliotecas de juegos de Steam y Epic no se enumeran automáticamente.

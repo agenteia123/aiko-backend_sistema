@@ -18,6 +18,12 @@ GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 AQUINO_CHANNEL_ID = "UCKuufKpyTISGU1TGj9n0q2A"
 AQUINO_VIDEOS = "https://www.youtube.com/@aquino_/videos"
 SHORTCUTS = {
+    "riot": "Riot Client",
+    "riot client": "Riot Client",
+    "steam": "Steam",
+    "epic": "Epic Games Launcher",
+    "epic games": "Epic Games Launcher",
+    "epic games launcher": "Epic Games Launcher",
     "valorant": "Valorant",
     "valoran": "Valorant",
     "fortnite": "Fortnite",
@@ -53,6 +59,8 @@ def parse_command(text):
         r"^(?:no )?(?:abre|inicia|ejecuta) ", text
     ) else ""
     text = re.sub(r"^juego ins?talado en mi pc llamado ", "", text)
+    if re.fullmatch(r"(?:riot|riot client) y (?:abre|inicia) (?:el )?valoran[t]?", text):
+        text = "valorant"
     text = re.sub(r"^minecraft (?:el )?paquete de mods (?:de )?", "minecraft ", text)
     text = re.sub(r" y (?:inicia|abre) el primer mundo(?: que (?:esta|este) (?:hay|ahi))?$", " primer mundo", text)
     if text in SHORTCUTS:
@@ -129,13 +137,83 @@ def list_mail(credentials):
             print(" - " + "".join(char for char in subject if char.isprintable()), flush=True)
 
 
+def installed_shortcut(target):
+    """Look in Windows' usual launcher and desktop shortcut folders."""
+    names = {target.casefold()}
+    if target == "Minecraft":
+        names.add("minecraft launcher")
+
+    desktop_folders = [Path.home() / "Desktop"]
+    for env_key in ("OneDrive", "PUBLIC"):
+        if location := os.environ.get(env_key):
+            desktop_folders.append(Path(location) / "Desktop")
+    menu_folders = [
+        Path(os.environ[key]) / "Microsoft" / "Windows" / "Start Menu" / "Programs"
+        for key in ("APPDATA", "PROGRAMDATA") if os.environ.get(key)
+    ]
+    for folder in desktop_folders + menu_folders:
+        matches = folder.rglob("*") if folder in menu_folders else folder.glob("*")
+        for path in matches:
+            if (
+                path.stem.casefold() in names
+                and path.suffix.casefold() in {".lnk", ".url"}
+                and path.is_file()
+            ):
+                return path
+    return None
+
+
+def riot_client_path():
+    program_data = os.environ.get("PROGRAMDATA")
+    if program_data:
+        registration = Path(program_data) / "Riot Games" / "RiotClientInstalls.json"
+        try:
+            data = json.loads(registration.read_text(encoding="utf-8-sig"))
+            candidates = [data.get("rc_live")] if isinstance(data, dict) else []
+            associated = data.get("associated_client") if isinstance(data, dict) else None
+            if isinstance(associated, dict):
+                candidates = [
+                    client for game, client in associated.items()
+                    if "valorant" in game.casefold()
+                ] + candidates
+            for candidate in candidates:
+                if isinstance(candidate, str):
+                    path = Path(candidate)
+                    if path.is_absolute() and path.name.casefold() == "riotclientservices.exe" and path.is_file():
+                        return path
+        except (OSError, ValueError):
+            pass
+
+    drive = os.environ.get("SystemDrive", "C:")
+    default = Path(drive + "/Riot Games/Riot Client/RiotClientServices.exe")
+    return default if default.is_file() else None
+
+
 def open_game_shortcut(target):
     if target not in SHORTCUTS.values():
-        raise ValueError("Juego no disponible.")
+        raise ValueError("Aplicación no disponible.")
     shortcut = DESKTOP_DIR / "accesos" / (target + ".lnk")
-    if not shortcut.is_file():
-        raise FileNotFoundError(f"Falta el acceso directo {shortcut}.")
-    os.startfile(shortcut)
+    if shortcut.is_file():
+        os.startfile(shortcut)
+        return
+
+    existing = installed_shortcut(target)
+    if existing is not None:
+        os.startfile(existing)
+        return
+
+    if target in {"Valorant", "Riot Client"}:
+        client = riot_client_path()
+        if client is not None:
+            args = [str(client)]
+            if target == "Valorant":
+                args.extend(["--launch-product=valorant", "--launch-patchline=live"])
+            subprocess.Popen(args, cwd=client.parent)
+            return
+
+    raise FileNotFoundError(
+        f"No encontré {target} en Windows. Puedes usar el acceso directo {shortcut}."
+    )
 
 
 def execute(command, allow_apps, gmail, settings):

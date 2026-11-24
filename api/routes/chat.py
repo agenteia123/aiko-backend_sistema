@@ -133,7 +133,7 @@ async def send_message(
                 except FileNotFoundError as exc:
                     reply = str(exc)
                 except (OSError, ValueError):
-                    reply = f"Windows no pudo abrir el acceso directo de {game}."
+                    reply = f"Windows no pudo iniciar {game}."
                 else:
                     reply = f"Envié a Windows la orden de abrir {game}."
 
