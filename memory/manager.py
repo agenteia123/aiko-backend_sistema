@@ -327,21 +327,31 @@ class MemoryManager:
     async def get_conversation_history(
         self,
         conversation_id: str,
+        user_id: str | None = None,
+        limit: int | None = None,
     ) -> list[dict]:
-        """Get full conversation history."""
+        """Return conversation messages in chronological order."""
         try:
             if not self._db_connection:
                 return []
-            
-            cursor = self._db_connection.cursor()
-            cursor.execute("""
-                SELECT id, role, content, timestamp
-                FROM messages
-                WHERE conversation_id = ?
-                ORDER BY timestamp ASC
-            """, (conversation_id,))
-            
+
+            query = (
+                "SELECT id, role, content, timestamp FROM messages "
+                "WHERE conversation_id = ?"
+            )
+            params = [conversation_id]
+            if user_id is not None:
+                query += " AND user_id = ?"
+                params.append(user_id)
+            if limit is None:
+                query += " ORDER BY timestamp ASC, rowid ASC"
+            else:
+                query += " ORDER BY timestamp DESC, rowid DESC LIMIT ?"
+                params.append(limit)
+            cursor = self._db_connection.execute(query, params)
             rows = cursor.fetchall()
+            if limit is not None:
+                rows.reverse()
             return [
                 {
                     "id": row[0],

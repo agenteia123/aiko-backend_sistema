@@ -12,11 +12,7 @@ def is_simple_greeting(message: str) -> bool:
         "hola cómo estás", "hola como estas", "cómo estás", "como estas",
         "hola, cómo estás", "hola, como estas",
     }
-    if msg in greetings:
-        return True
-    if len(msg.split()) <= 3 and any(g in msg for g in ["hola", "buenas", "hey", "hi"]):
-        return True
-    return False
+    return msg in greetings
 
 
 def detect_intent(message: str) -> str:

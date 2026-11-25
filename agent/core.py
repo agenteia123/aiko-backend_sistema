@@ -9,7 +9,7 @@ from typing import Annotated, TypedDict
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage, ToolMessage
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 
@@ -104,20 +104,6 @@ def _is_style_instruction(text: str) -> bool:
     )
 
 
-def _topic_overlap(a: str, b: str) -> bool:
-    stop = {
-        "el", "la", "los", "las", "un", "una", "de", "que", "y", "o", "en",
-        "con", "por", "para", "me", "te", "se", "al", "del", "es",
-        "crea", "crear", "pdf", "haz", "hacer", "aiko", "favor", "hola",
-        "como", "esta", "esto", "unos",
-    }
-    wa = {w for w in re.findall(r"[a-záéíóúñ]{4,}", (a or "").lower()) if w not in stop}
-    wb = {w for w in re.findall(r"[a-záéíóúñ]{4,}", (b or "").lower()) if w not in stop}
-    if not wa or not wb:
-        return False
-    return len(wa & wb) >= 2
-
-
 def _is_reminder_message(text: str) -> bool:
     return bool(
         re.search(
@@ -191,7 +177,6 @@ def build_memory_blocks(user_message: str, intent: str, history: list, facts: li
     is_short = len((user_message or "").split()) <= 4
 
     style_context = ""
-    memory_context = ""
     docs_context = ""
 
     style_lines = []
@@ -221,22 +206,6 @@ def build_memory_blocks(user_message: str, intent: str, history: list, facts: li
             + "\n"
         )
 
-    if history and not is_file and not is_short:
-        lines = []
-        for msg in history[-12:]:
-            content = (msg.get("content") or "").strip()
-            if not content or content.strip() == (user_message or "").strip():
-                continue
-            if _topic_overlap(user_message, content):
-                role = msg.get("role", "user")
-                lines.append(f"{role}: {content[:220]}")
-        if lines:
-            memory_context = (
-                "\n\nContexto del MISMO tema (úsalo solo si ayuda a ESTA pregunta):\n"
-                + "\n".join(lines[-6:])
-                + "\n"
-            )
-
     asks_docs = bool(
         re.search(
             r"\b(pdf|documento|archivo|el que creaste|qu[eé] generaste|descarga)\b",
@@ -256,7 +225,21 @@ def build_memory_blocks(user_message: str, intent: str, history: list, facts: li
                 + "\n"
             )
 
-    return memory_context, style_context, docs_context
+    return style_context, docs_context
+
+
+def conversation_messages(history):
+    messages = []
+    for entry in history[-12:]:
+        content = (entry.get("content") or "").strip()
+        if not content:
+            continue
+        role = entry.get("role")
+        if role in {"user", "human"}:
+            messages.append(HumanMessage(content=content[:1200]))
+        elif role in {"assistant", "aiko", "ai"}:
+            messages.append(AIMessage(content=content[:1200]))
+    return messages
 
 
 def _default_diet_guide() -> str:
@@ -833,22 +816,27 @@ class AikoAgent:
             MAIN_USER_ID = settings.AUTH_USER_ID
             lower_msg = user_message.lower()
 
-            from voice.desktop import AQUINO_VIDEOS, find_youtube_video, latest_aquino_video, normalize, parse_command, read_settings, youtube_search
+            from voice.desktop import AQUINO_VIDEOS, find_youtube_video, latest_aquino_video, parse_command, read_settings, youtube_search
 
             desktop_command = parse_command(user_message)
-            youtube_requested = desktop_command == ("youtube", "")
-            web = desktop_command if desktop_command and desktop_command[0] in {"web_url", "youtube_play"} else None
-            game = desktop_command[1] if desktop_command and desktop_command[0] == "shortcut" else ""
-            if not youtube_requested and re.fullmatch(
-                r"(?:miralo(?: tu)?(?: entonces)? y )?(?:pon|abre|reproduce) "
-                r"(?:el )?ultimo(?: video)?(?: por favor)?",
-                normalize(user_message),
-            ):
-                previous = await self.memory.get_latest_assistant_reply(conversation_id, user_id)
-                youtube_requested = previous.startswith((
-                    "No pude verificar el último video. [Ver los videos del canal de Aquino]",
-                    "[Ver el video más reciente de Aquino]",
-                ))
+            if desktop_command == ("youtube_followup", ""):
+                recent = await self.memory.get_conversation_history(conversation_id, user_id=user_id, limit=4)
+                for entry in reversed(recent):
+                    if entry.get("role") not in {"assistant", "aiko"}:
+                        continue
+                    previous = entry.get("content", "")
+                    if previous.startswith(("No pude verificar el último video.", "[Ver el video más reciente de Aquino]")):
+                        desktop_command = ("youtube", "")
+                    else:
+                        channel_match = re.search(r"\[Canal de YouTube\]\(https://www\.youtube\.com/(@[A-Za-z0-9_.-]{1,30})(?:/videos)?\)", previous)
+                        if channel_match:
+                            desktop_command = ("youtube_latest", channel_match[1])
+                    break
+
+            action, target = desktop_command or ("", "")
+            youtube_requested = action == "youtube"
+            web = action in {"web_url", "youtube_play", "youtube_channel", "youtube_latest", "youtube_followup", "youtube_channel_clarify"}
+            game = target if action == "shortcut" else ""
 
             video_url = ""
             reminder = _parse_reminder(user_message)
@@ -864,8 +852,22 @@ class AikoAgent:
                     reply = f"[Ver el video más reciente de Aquino]({video_url})."
                 intent = "youtube"
             elif web:
-                action, target = web
-                if action == "youtube_play":
+                if action in {"youtube_followup", "youtube_channel_clarify"}:
+                    reply = "¿De qué canal quieres el video más reciente? Dime su @usuario de YouTube."
+                elif action == "youtube_channel":
+                    video_url = f"https://www.youtube.com/{target}"
+                    reply = f"[Canal de YouTube]({video_url})."
+                elif action == "youtube_latest":
+                    channel_url = f"https://www.youtube.com/{target}/videos"
+                    try:
+                        video_url = await asyncio.to_thread(find_youtube_video, target, channel=True)
+                    except ImportError:
+                        video_url = None
+                    if video_url:
+                        reply = f"[Ver la publicación más reciente]({video_url}) · [Canal de YouTube]({channel_url})."
+                    else:
+                        reply = f"No pude verificar la última publicación. [Canal de YouTube]({channel_url})."
+                elif action == "youtube_play":
                     try:
                         video_url = await asyncio.to_thread(find_youtube_video, target)
                     except ImportError:
@@ -930,7 +932,7 @@ class AikoAgent:
             self._active_tools = self._tools_for_intent(intent)
 
             is_short_chat = (
-                is_simple_greeting(user_message) or len(user_message.strip()) < 40
+                is_simple_greeting(user_message)
             ) and not _is_reminder_message(user_message)
 
             if is_short_chat:
@@ -1017,16 +1019,11 @@ class AikoAgent:
             try:
                 from core.supabase_client import (
                     get_conversation_messages as sb_get_messages,
-                    get_recent_user_messages as sb_get_recent,
                     get_user_facts as sb_get_facts,
                     list_user_documents as sb_list_docs,
                 )
 
                 history = sb_get_messages(conversation_id, user_id, limit=16) or []
-                if len(history) < 2:
-                    extra = sb_get_recent(user_id, limit=16) or []
-                    if extra:
-                        history = extra
                 facts = sb_get_facts(user_id, limit=20) or []
                 docs = sb_list_docs(user_id, limit=6) or []
             except Exception as e:
@@ -1034,7 +1031,7 @@ class AikoAgent:
 
             if not history:
                 try:
-                    history = await self.memory.get_conversation_history(conversation_id) or []
+                    history = await self.memory.get_conversation_history(conversation_id, user_id=user_id, limit=16) or []
                 except Exception:
                     history = []
             if not facts:
@@ -1043,7 +1040,7 @@ class AikoAgent:
                 except Exception:
                     facts = []
 
-            memory_context, style_context, docs_context = build_memory_blocks(
+            style_context, docs_context = build_memory_blocks(
                 user_message=user_message,
                 intent=intent,
                 history=history,
@@ -1074,19 +1071,13 @@ Reglas de memoria:
 - Preferencias de trabajo = CÓMO responder (largo, listas, idioma, tono).
 - Contexto del mismo tema = solo si encaja con ESTA pregunta.
 - Al crear PDF/documento: contenido nuevo de ESTA petición + estilo previo. No mezclar temas viejos.
-- No digas que no recuerdas si hay preferencias o contexto del mismo tema.
-- SÍ puedes crear recordatorios. Nunca digas que no puedes ni que use el móvil.
+- Resuelve referencias breves con los mensajes de esta conversación; si hay varias opciones, pregunta.
+- Confirma acciones o resultados solo cuando una herramienta o el sistema hayan devuelto evidencia.
+- Si el usuario pide datos actuales y no hay evidencia, dilo sin inventar titulares, enlaces o fechas.
+- No cambies de tema ni busques noticias salvo que el usuario las solicite.
 """
 
-            if is_short_chat:
-                system_prompt = f"""Eres Aiko, una compañera AI amable y cercana.
-Hoy es {current_date}.
-Responde en español, breve y natural. No uses herramientas.
-Si te piden un recordatorio, confírmalo. Nunca digas que no puedes.
-
-Usuario: {user_message}"""
-            else:
-                system_prompt = f"""Eres Aiko, una compañera AI con personalidad propia.
+            system_prompt = f"""Eres Aiko, una asistente en español.
 Hoy es {current_date}.
 
 {personality}
@@ -1094,7 +1085,6 @@ Hoy es {current_date}.
 {search_block}
 
 {style_context}
-{memory_context}
 {docs_context}
 
 {memory_rules}
@@ -1102,11 +1092,14 @@ Hoy es {current_date}.
 {file_pdf_rules}
 {file_ban}
 
-Responde en español, claro y útil.
-Usuario: {user_message}"""
+Responde en español, claro y útil."""
 
             initial_state: AgentState = {
-                "messages": [HumanMessage(content=system_prompt)],
+                "messages": [
+                    SystemMessage(content=system_prompt),
+                    *conversation_messages(history),
+                    HumanMessage(content=user_message),
+                ],
                 "user_id": user_id,
                 "conversation_id": conversation_id,
                 "analysis_level": analysis_level,

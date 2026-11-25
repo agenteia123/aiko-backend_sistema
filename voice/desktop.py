@@ -48,6 +48,12 @@ def normalize(text):
     )))
 
 
+def youtube_channel_handle(name):
+    if re.fullmatch(r"@[A-Za-z0-9_.-]{1,30}", name):
+        return name
+    return {"aquisi": "@AQUISI", "aquino": "@AQUINO_"}.get(normalize(name))
+
+
 def parse_command(text):
     text_original = text
     text = normalize(text)
@@ -60,15 +66,35 @@ def parse_command(text):
     ):
         return "youtube", ""
     raw = re.sub(r"^(?:aiko[, ]+|por favor[, ]+)", "", text_original.strip(), flags=re.IGNORECASE)
+    latest = re.fullmatch(
+        r"(?:abre|busca|pon|reproduce) (?:el )?(?:ultimo video|video mas (?:nuevo|reciente)) "
+        r"(?:del canal )?de (.+?)(?: por favor)?",
+        raw.replace("último", "ultimo").replace("más", "mas"), re.IGNORECASE,
+    )
+    compound = re.fullmatch(
+        r"(?:abre|busca) (?:el )?canal (?:de )?(.+?) y (?:pon|abre|reproduce) "
+        r"(?:el )?(?:ultimo(?: video)?|video mas (?:nuevo|reciente))(?: por favor)?",
+        raw.replace("último", "ultimo").replace("más", "mas"), re.IGNORECASE,
+    )
+    if latest or compound:
+        name = (latest or compound)[1]
+        handle = youtube_channel_handle(name)
+        return ("youtube_latest", handle) if handle else ("youtube_channel_clarify", name)
+    if re.fullmatch(
+        r"(?:miralo(?: tu)?(?: entonces)? y )?(?:pon|abre|reproduce) "
+        r"(?:el )?ultimo(?: video)?(?: por favor)?",
+        text,
+    ):
+        return "youtube_followup", ""
     channel = re.fullmatch(
-        r"(?:abre|entra a) (?:el )?canal (?:de )?(@[^\s]+|.+?)(?: en youtube)?(?: por favor)?",
+        r"(?:abre|busca(?:me)?|entra a) (?:el )?canal (?:de )?(.+?)(?: en youtube)?(?: por favor)?",
         raw, re.IGNORECASE,
     )
     if channel:
-        handle = channel[1]
-        if re.fullmatch(r"@[A-Za-z0-9_.-]{1,30}", handle):
-            return "web_url", "https://www.youtube.com/" + handle
-        return "web_url", youtube_search(handle + " canal oficial")
+        handle = youtube_channel_handle(channel[1])
+        if handle:
+            return "youtube_channel", handle
+        return "web_url", youtube_search(channel[1] + " canal oficial")
     search = re.fullmatch(
         r"(?:abre youtube y )?(?:busca(?:me)?|haz una busqueda de) (.+)", text
     )
@@ -78,8 +104,10 @@ def parse_command(text):
             return "web_url", youtube_search(query.removeprefix("en youtube "))
         if query.endswith(" en youtube"):
             return "web_url", youtube_search(query.removesuffix(" en youtube"))
-        query = query.removeprefix("en google ").removesuffix(" en google")
-        return "web_url", "https://www.google.com/search?" + urlencode({"q": query})
+        if query.startswith("en google ") or query.endswith(" en google"):
+            query = query.removeprefix("en google ").removesuffix(" en google")
+            return "web_url", "https://www.google.com/search?" + urlencode({"q": query})
+        return None
     music = re.fullmatch(r"(?:pon(?:me)?|reproduce)(?: en youtube)? (.+)", text)
     if music:
         return "youtube_play", music[1].removesuffix(" en youtube").removesuffix(" por favor")
@@ -113,7 +141,7 @@ def youtube_search(query):
     return "https://www.youtube.com/results?" + urlencode({"search_query": query})
 
 
-def find_youtube_video(query):
+def find_youtube_video(query, *, channel=False):
     from yt_dlp import YoutubeDL
     from yt_dlp.utils import DownloadError
 
@@ -121,8 +149,10 @@ def find_youtube_video(query):
         with YoutubeDL({
             "quiet": True, "no_warnings": True, "extract_flat": True,
             "socket_timeout": 5, "extractor_retries": 0, "retries": 0,
+            "playlistend": 1,
         }) as youtube:
-            results = youtube.extract_info("ytsearch1:" + query, download=False)
+            source = "https://www.youtube.com/" + query + "/videos" if channel else "ytsearch1:" + query
+            results = youtube.extract_info(source, download=False)
     except DownloadError:
         return None
     for entry in (results or {}).get("entries", []):
@@ -441,6 +471,16 @@ def execute(command, allow_apps, gmail, settings):
         open_web_url(latest_aquino_video(settings))
     elif action == "web_url":
         open_web_url(target)
+    elif action == "youtube_channel":
+        open_web_url("https://www.youtube.com/" + target)
+    elif action == "youtube_latest":
+        try:
+            video = find_youtube_video(target, channel=True)
+        except ImportError:
+            video = None
+        open_web_url(video or "https://www.youtube.com/" + target + "/videos")
+    elif action in {"youtube_followup", "youtube_channel_clarify"}:
+        print("Indica el nombre o @usuario del canal para abrir su último video.", flush=True)
     elif action == "youtube_play":
         try:
             video = find_youtube_video(target)
