@@ -51,7 +51,7 @@ def normalize(text):
 def youtube_channel_handle(name):
     if re.fullmatch(r"@[A-Za-z0-9_.-]{1,30}", name):
         return name
-    return {"aquisi": "@AQUISI", "aquino": "@AQUINO_"}.get(normalize(name))
+    return {"aquisi": "@AQUISI_", "aquino": "@AQUINO_"}.get(normalize(name))
 
 
 def parse_command(text):
@@ -95,6 +95,9 @@ def parse_command(text):
         if handle:
             return "youtube_channel", handle
         return "web_url", youtube_search(channel[1] + " canal oficial")
+    google = re.fullmatch(r"(?:abre|entra a) en google (.+?)(?: por favor)?", text)
+    if google:
+        return "web_url", "https://www.google.com/search?" + urlencode({"q": google[1]})
     search = re.fullmatch(
         r"(?:abre youtube y )?(?:busca(?:me)?|haz una busqueda de) (.+)", text
     )
@@ -142,6 +145,11 @@ def youtube_search(query):
 
 
 def find_youtube_video(query, *, channel=False):
+    if channel and query.casefold() == "@aquisi_":
+        try:
+            return latest_channel_feed_video("UC7jtSuXXamDt0eKFfYfGLDQ")
+        except (OSError, ValueError, SyntaxError):
+            pass
     from yt_dlp import YoutubeDL
     from yt_dlp.utils import DownloadError
 
@@ -195,6 +203,10 @@ def latest_aquino_video(settings):
     channel_id = settings.get("aquino_channel_id", AQUINO_CHANNEL_ID)
     if not isinstance(channel_id, str) or not re.fullmatch(r"UC[A-Za-z0-9_-]{22}", channel_id):
         raise ValueError("Configura aquino_channel_id en settings.json.")
+    return latest_channel_feed_video(channel_id)
+
+
+def latest_channel_feed_video(channel_id):
     feed = "https://www.youtube.com/feeds/videos.xml?" + urlencode({"channel_id": channel_id})
     ns = {"atom": "http://www.w3.org/2005/Atom", "yt": "http://www.youtube.com/xml/schemas/2015"}
     with urlopen(feed, timeout=8) as response:
@@ -478,7 +490,7 @@ def execute(command, allow_apps, gmail, settings):
             video = find_youtube_video(target, channel=True)
         except ImportError:
             video = None
-        open_web_url(video or "https://www.youtube.com/" + target + "/videos")
+        open_web_url(video or "https://www.youtube.com/" + target)
     elif action in {"youtube_followup", "youtube_channel_clarify"}:
         print("Indica el nombre o @usuario del canal para abrir su último video.", flush=True)
     elif action == "youtube_play":

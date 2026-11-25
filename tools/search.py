@@ -2,6 +2,8 @@
 
 import logging
 import asyncio
+from datetime import datetime, timedelta, timezone
+from urllib.parse import urlsplit
 from typing import Optional
 
 from langchain_core.tools import StructuredTool
@@ -48,6 +50,43 @@ class SearchTool:
             logger.warning(f"DuckDuckGo no disponible: {e}")
             self.ddgs = None
     
+    def today_news(self, query: str) -> str:
+        """Return only articles with a publication timestamp on today's Lima date."""
+        lima = timezone(timedelta(hours=-5))
+        today = datetime.now(lima).date()
+        date_label = today.strftime("%d/%m/%Y")
+        articles = []
+        seen = set()
+        if self.ddgs is None:
+            return f"No pude consultar el buscador de noticias del {date_label}."
+        try:
+            results = self.ddgs.news(query, region="pe-es", timelimit="d", max_results=12)
+        except Exception as exc:
+            logger.warning("No se pudo consultar el buscador de noticias: %s", exc)
+            return f"No pude consultar el buscador de noticias del {date_label}."
+        for result in results or []:
+            try:
+                published = datetime.fromisoformat(result.get("date", "").replace("Z", "+00:00"))
+                url = result.get("url", "")
+                address = urlsplit(url)
+            except (AttributeError, TypeError, ValueError):
+                continue
+            if (
+                published.tzinfo is None or published.astimezone(lima).date() != today
+                or address.scheme not in {"http", "https"} or not address.hostname
+                or not result.get("title") or url in seen
+            ):
+                continue
+            seen.add(url)
+            title = " ".join(str(result["title"]).split())
+            source = result.get("source") or address.hostname
+            articles.append(f"- **{title}** — {source}. [Leer noticia](<{url}>)")
+            if len(articles) == 5:
+                break
+        if not articles:
+            return f"No encontré noticias con fecha de publicación verificable del {date_label} (hora de Lima)."
+        return f"Noticias publicadas el **{date_label}** (hora de Lima):\n\n" + "\n".join(articles)
+
     def get_tool(self):
         """Get the search tool as a LangChain StructuredTool."""
         return StructuredTool.from_function(

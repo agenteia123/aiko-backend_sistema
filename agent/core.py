@@ -816,7 +816,7 @@ class AikoAgent:
             MAIN_USER_ID = settings.AUTH_USER_ID
             lower_msg = user_message.lower()
 
-            from voice.desktop import AQUINO_VIDEOS, find_youtube_video, latest_aquino_video, parse_command, read_settings, youtube_search
+            from voice.desktop import AQUINO_VIDEOS, find_youtube_video, latest_aquino_video, normalize, parse_command, read_settings, youtube_search
 
             desktop_command = parse_command(user_message)
             if desktop_command == ("youtube_followup", ""):
@@ -838,9 +838,22 @@ class AikoAgent:
             web = action in {"web_url", "youtube_play", "youtube_channel", "youtube_latest", "youtube_followup", "youtube_channel_clarify"}
             game = target if action == "shortcut" else ""
 
+            normalized = normalize(user_message)
+            today_news = (
+                not desktop_command and bool(re.search(r"\bnoticias\b", normalized))
+                and bool(re.search(r"\bhoy\b", normalized))
+            )
             video_url = ""
             reminder = _parse_reminder(user_message)
-            if youtube_requested:
+            if today_news:
+                if getattr(settings, "ENABLE_SEARCH", True):
+                    from tools.search import SearchTool
+
+                    reply = await asyncio.to_thread(SearchTool().today_news, user_message)
+                else:
+                    reply = "La búsqueda de noticias está desactivada en la configuración de Aiko."
+                intent = "search"
+            elif youtube_requested:
                 try:
                     video_url = await asyncio.to_thread(lambda: latest_aquino_video(read_settings()))
                 except (OSError, ValueError, SyntaxError):
@@ -858,7 +871,7 @@ class AikoAgent:
                     video_url = f"https://www.youtube.com/{target}"
                     reply = f"[Canal de YouTube]({video_url})."
                 elif action == "youtube_latest":
-                    channel_url = f"https://www.youtube.com/{target}/videos"
+                    channel_url = f"https://www.youtube.com/{target}"
                     try:
                         video_url = await asyncio.to_thread(find_youtube_video, target, channel=True)
                     except ImportError:
@@ -894,7 +907,7 @@ class AikoAgent:
                 )
                 intent = "reminder"
 
-            if reminder or youtube_requested or web or game:
+            if reminder or youtube_requested or web or game or today_news:
                 try:
                     await self.memory.save_message(user_id, conversation_id, "user", user_message)
                     await self.memory.save_message(user_id, conversation_id, "assistant", reply)
