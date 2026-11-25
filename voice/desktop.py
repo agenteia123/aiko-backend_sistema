@@ -66,6 +66,18 @@ def parse_command(text):
     ):
         return "youtube", ""
     raw = re.sub(r"^(?:aiko[, ]+|por favor[, ]+)", "", text_original.strip(), flags=re.IGNORECASE)
+    if re.fullmatch(r"(?:abre|inicia) spotify y (?:pon|reproduce) musica(?: por favor)?", text):
+        return "spotify_music", "Spotify"
+
+    if re.match(r"(?:abre|pon|reproduce) ", text) and re.search(r"\b(?:playlist[s]?|lista de reproduccion)\b", text):
+        playlist = re.search(r"[?&]list=([A-Za-z0-9_-]{12,80})(?=[&#\s]|$)", raw)
+        position = re.search(r"\b(?:pon|reproduce) (?:la |el )?(?:pista |cancion )?(\d{1,3})\b", text)
+        if not playlist:
+            return "playlist_clarify", ""
+        index = int(position[1]) if position else 1
+        if 1 <= index <= 500:
+            return "youtube_playlist", f"{playlist[1]}:{index}"
+        return "playlist_clarify", ""
     latest = re.fullmatch(
         r"(?:abre|busca|pon|reproduce) (?:el )?(?:ultimo video|video mas (?:nuevo|reciente)) "
         r"(?:del canal )?de (.+?)(?: por favor)?",
@@ -144,7 +156,7 @@ def youtube_search(query):
     return "https://www.youtube.com/results?" + urlencode({"search_query": query})
 
 
-def find_youtube_video(query, *, channel=False):
+def find_youtube_video(query, *, channel=False, playlist_index=None):
     if channel and query.casefold() == "@aquisi_":
         try:
             return latest_channel_feed_video("UC7jtSuXXamDt0eKFfYfGLDQ")
@@ -157,15 +169,23 @@ def find_youtube_video(query, *, channel=False):
         with YoutubeDL({
             "quiet": True, "no_warnings": True, "extract_flat": True,
             "socket_timeout": 5, "extractor_retries": 0, "retries": 0,
-            "playlistend": 1,
+            "playlist_items": str(playlist_index or 1),
         }) as youtube:
-            source = "https://www.youtube.com/" + query + "/videos" if channel else "ytsearch1:" + query
+            if playlist_index:
+                source = "https://www.youtube.com/playlist?" + urlencode({"list": query})
+            elif channel:
+                source = "https://www.youtube.com/" + query + "/videos"
+            else:
+                source = "ytsearch1:" + query
             results = youtube.extract_info(source, download=False)
     except DownloadError:
         return None
     for entry in (results or {}).get("entries", []):
         if entry and re.fullmatch(r"[A-Za-z0-9_-]{11}", entry.get("id") or ""):
-            return "https://www.youtube.com/watch?v=" + entry["id"]
+            params = {"v": entry["id"]}
+            if playlist_index:
+                params.update(list=query, index=playlist_index)
+            return "https://www.youtube.com/watch?" + urlencode(params)
     return None
 
 
@@ -477,8 +497,22 @@ def execute(command, allow_apps, gmail, settings):
     if not allow_apps:
         print("Apertura de aplicaciones desactivada.", flush=True)
         return
-    if action == "shortcut":
+    if action in {"shortcut", "spotify_music"}:
         open_game_shortcut(target)
+        if action == "spotify_music":
+            print("Envié la orden de abrir Spotify. Inicia la reproducción desde Spotify.", flush=True)
+    elif action == "playlist_clarify":
+        print("Indica el enlace de la playlist de YouTube y el número de pista.", flush=True)
+    elif action == "youtube_playlist":
+        playlist, index = target.split(":")
+        try:
+            video = find_youtube_video(playlist, playlist_index=int(index))
+        except ImportError:
+            video = None
+        if video:
+            open_web_url(video)
+        else:
+            print("No pude verificar esa pista de la playlist.", flush=True)
     elif action == "youtube":
         open_web_url(latest_aquino_video(settings))
     elif action == "web_url":

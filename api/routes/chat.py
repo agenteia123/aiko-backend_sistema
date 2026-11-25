@@ -134,6 +134,8 @@ async def send_message(
                     reply = str(exc)
                 else:
                     reply = f"Envié a Windows la orden de abrir {game}."
+                    if metadata.get("spotify_music"):
+                        reply += " Inicia la reproducción desde Spotify."
 
         destination = urlsplit(video_url)
         if (

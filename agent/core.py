@@ -835,8 +835,8 @@ class AikoAgent:
 
             action, target = desktop_command or ("", "")
             youtube_requested = action == "youtube"
-            web = action in {"web_url", "youtube_play", "youtube_channel", "youtube_latest", "youtube_followup", "youtube_channel_clarify"}
-            game = target if action == "shortcut" else ""
+            web = action in {"web_url", "youtube_play", "youtube_channel", "youtube_latest", "youtube_followup", "youtube_channel_clarify", "youtube_playlist", "playlist_clarify"}
+            game = target if action in {"shortcut", "spotify_music"} else ""
 
             normalized = normalize(user_message)
             today_news = (
@@ -865,7 +865,19 @@ class AikoAgent:
                     reply = f"[Ver el video más reciente de Aquino]({video_url})."
                 intent = "youtube"
             elif web:
-                if action in {"youtube_followup", "youtube_channel_clarify"}:
+                if action == "playlist_clarify":
+                    reply = "Pásame el enlace de la playlist de YouTube y el número de pista para abrir la correcta."
+                elif action == "youtube_playlist":
+                    playlist, index = target.split(":")
+                    try:
+                        video_url = await asyncio.to_thread(find_youtube_video, playlist, playlist_index=int(index))
+                    except ImportError:
+                        video_url = None
+                    if video_url:
+                        reply = f"[Abrir la pista {index} de la playlist]({video_url})."
+                    else:
+                        reply = f"No pude verificar la pista {index}. Revisa si la playlist es pública y contiene esa pista."
+                elif action in {"youtube_followup", "youtube_channel_clarify"}:
                     reply = "¿De qué canal quieres el video más reciente? Dime su @usuario de YouTube."
                 elif action == "youtube_channel":
                     video_url = f"https://www.youtube.com/{target}"
@@ -931,6 +943,7 @@ class AikoAgent:
                         **({"reminder": reminder} if intent == "reminder" else {}),
                         **({"youtube_video_url": video_url} if video_url else {}),
                         **({"desktop_game": game} if game else {}),
+                        **({"spotify_music": True} if action == "spotify_music" else {}),
                     },
                 }
 
